@@ -84,7 +84,9 @@ export function AppShell({
   const footer = (
     <div className="border-t border-slate-200 p-3">
       <div className="truncate text-sm font-medium">{userName}</div>
-      <div className="mb-2 text-xs text-slate-500">{roleName}</div>
+      <div className="mb-2 text-xs text-slate-500">
+        {roleName} · <Link href="/account/password" className="hover:underline">Mot de passe</Link>
+      </div>
       <form action={logoutAction}>
         <button className="btn-secondary w-full">Déconnexion</button>
       </form>

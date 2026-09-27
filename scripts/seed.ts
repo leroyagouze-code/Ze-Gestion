@@ -11,6 +11,11 @@ import { createSupplier } from "@/modules/suppliers/service";
 
 /** Données de démonstration : entreprise, produits, clients, ventes. Compte : demo@gestion.local / demo12345 */
 async function main() {
+  // Le compte de démo est aussi super admin : jamais sur un serveur de production.
+  if (process.env.NODE_ENV === "production" || (process.env.APP_URL ?? "").startsWith("https://")) {
+    console.error("Refusé : les données de démo (avec un super admin au mot de passe connu) ne se chargent pas en production.");
+    process.exit(1);
+  }
   const email = process.env.SEED_EMAIL ?? "demo@gestion.local";
   const [exists] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
   if (exists) {

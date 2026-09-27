@@ -55,6 +55,13 @@ export default async function CompanySettingsPage({ searchParams }: { searchPara
             <TextArea label="Informations bancaires" name="bankInfo" defaultValue={c.bankInfo ?? ""} />
             <TextArea label="Mentions par défaut sur les factures" name="invoiceNotes" defaultValue={c.invoiceNotes ?? ""} />
             <TextArea label="Pied de page des factures et tickets" name="invoiceFooter" defaultValue={c.invoiceFooter ?? ""} className="sm:col-span-2" />
+            <label className="flex items-start gap-2 text-sm sm:col-span-2">
+              <input type="checkbox" name="allowNegativeStock" defaultChecked={c.allowNegativeStock} className="mt-0.5 h-4 w-4 accent-brand-700" />
+              <span>
+                Autoriser la vente sans stock suffisant
+                <span className="block text-xs text-slate-500">Décoché : la caisse refuse de vendre plus que le stock enregistré. À cocher si vous ne suivez pas encore votre stock.</span>
+              </span>
+            </label>
           </div>
         </Card>
         <SubmitButton>Enregistrer</SubmitButton>

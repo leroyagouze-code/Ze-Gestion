@@ -5,7 +5,7 @@ import { auditLogs, memberships, plans, roles, stores, subscriptions, users } fr
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { hashPassword } from "@/lib/auth/password";
-import { deleteUserSessions } from "@/lib/auth/session";
+import { deleteUserSessions, newToken } from "@/lib/auth/session";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
 import { optText, optUuid } from "@/lib/zod";
@@ -80,28 +80,26 @@ export const newUserSchema = z.object({
   storeId: optUuid,
 });
 
-/** Ajoute un utilisateur : crée le compte s'il n'existe pas, sinon rattache le compte existant. */
+/**
+ * Ajoute un utilisateur avec un mot de passe provisoire, qu'il devra changer à sa première connexion.
+ * Un email qui a déjà un compte n'est jamais rattaché en silence : son titulaire n'a rien accepté.
+ */
 export async function addMember(ctx: AppContext, raw: z.input<typeof newUserSchema>) {
   ctxAssert(ctx, "users.manage");
   const input = newUserSchema.parse(raw);
   await enforceUserLimit(ctx);
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
-  const passwordHash = existing ? null : await hashPassword(input.password);
+  if (existing) throw new BusinessError("Cet email a déjà un compte. Utilisez une autre adresse pour cet employé.");
+  const passwordHash = await hashPassword(input.password);
   return withTenant(ctx, async (tx) => {
     const [role] = await tx.select().from(roles).where(eq(roles.id, input.roleId));
     if (!role) throw new NotFoundError("Rôle");
     assertCanGrant(ctx, role);
-    let userId = existing?.id;
-    if (!userId) {
-      const [u] = await tx
-        .insert(users)
-        .values({ email: input.email, fullName: input.fullName, phone: input.phone ?? null, passwordHash: passwordHash! })
-        .returning({ id: users.id });
-      userId = u.id;
-    } else {
-      const [m] = await tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.companyId, ctx.companyId)));
-      if (m) throw new BusinessError("Cet utilisateur fait déjà partie de l'entreprise");
-    }
+    const [u] = await tx
+      .insert(users)
+      .values({ email: input.email, fullName: input.fullName, phone: input.phone ?? null, passwordHash, mustChangePassword: true })
+      .returning({ id: users.id });
+    const userId = u.id;
     await tx.insert(memberships).values({ companyId: ctx.companyId, userId, roleId: input.roleId, storeId: input.storeId ?? null });
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "user.added", entityType: "user", entityId: userId, metadata: { email: input.email }, ip: ctx.ip });
     return userId;
@@ -127,6 +125,33 @@ export async function updateMember(ctx: AppContext, membershipId: string, patch:
     await tx.update(memberships).set(patch).where(eq(memberships.id, membershipId));
     if (patch.isActive === false) await deleteUserSessions(m.userId);
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "user.updated", entityType: "user", entityId: m.userId, metadata: patch, ip: ctx.ip });
+  });
+}
+
+/**
+ * Réinitialise le mot de passe d'un employé : nouveau mot de passe provisoire affiché une seule fois,
+ * sessions fermées, changement obligatoire à la connexion suivante. Tracé dans le journal.
+ */
+export async function resetMemberPassword(ctx: AppContext, membershipId: string) {
+  ctxAssert(ctx, "users.manage");
+  return withTenant(ctx, async (tx) => {
+    const [m] = await tx.select().from(memberships).where(eq(memberships.id, membershipId));
+    if (!m) throw new NotFoundError("Utilisateur");
+    if (m.userId === ctx.userId) throw new BusinessError("Pour votre propre compte, utilisez « Mot de passe » dans le menu");
+    if (m.isOwner) throw new BusinessError("Le mot de passe du propriétaire ne peut être changé que par lui-même");
+    const [role] = await tx.select().from(roles).where(eq(roles.id, m.roleId));
+    if (role) assertCanGrant(ctx, role);
+    // Un compte présent dans une autre entreprise ne doit pas pouvoir être repris depuis celle-ci
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(memberships)
+      .where(and(eq(memberships.userId, m.userId), sql`${memberships.companyId} <> ${ctx.companyId}`));
+    if (count > 0) throw new BusinessError("Ce compte est aussi utilisé dans une autre entreprise : son titulaire doit changer lui-même son mot de passe");
+    const temporary = newToken(9).replace(/[-_]/g, "x");
+    await tx.update(users).set({ passwordHash: await hashPassword(temporary), mustChangePassword: true }).where(eq(users.id, m.userId));
+    await deleteUserSessions(m.userId);
+    await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "user.password_reset", entityType: "user", entityId: m.userId, ip: ctx.ip });
+    return temporary;
   });
 }
 

@@ -5,14 +5,19 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { errorMessage, runAction, type ActionState } from "@/lib/actions";
 import { requireContext } from "@/lib/auth/server";
+import { ctxAssert, type AppContext } from "@/modules/auth/context";
 import { putFile } from "@/lib/storage";
 import { formToObject } from "@/lib/zod";
 import { createProduct, deleteProduct, importProducts, updateProduct } from "@/modules/products/service";
 
-async function withImage(fd: FormData, companyId: string) {
+async function withImage(fd: FormData, ctx: AppContext) {
   const data = formToObject(fd);
+  delete data.imageUrl; // seule l'adresse produite par le serveur est acceptée
   const file = fd.get("image");
-  if (file instanceof File && file.size > 0) data.imageUrl = await putFile(companyId, file, { imagesOnly: true });
+  if (file instanceof File && file.size > 0) {
+    ctxAssert(ctx, "products.edit"); // droits vérifiés avant d'écrire sur le disque
+    data.imageUrl = await putFile(ctx.companyId, file, { imagesOnly: true });
+  }
   return data;
 }
 
@@ -20,7 +25,7 @@ export async function createProductAction(_: ActionState, fd: FormData): Promise
   const ctx = await requireContext();
   let id: string;
   try {
-    id = await createProduct(ctx, (await withImage(fd, ctx.companyId)) as never);
+    id = await createProduct(ctx, (await withImage(fd, ctx)) as never);
   } catch (e) {
     return { error: errorMessage(e) };
   }
@@ -30,7 +35,7 @@ export async function createProductAction(_: ActionState, fd: FormData): Promise
 
 export async function updateProductAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
   const ctx = await requireContext();
-  const res = await runAction(async () => updateProduct(ctx, id, (await withImage(fd, ctx.companyId)) as never));
+  const res = await runAction(async () => updateProduct(ctx, id, (await withImage(fd, ctx)) as never));
   revalidatePath(`/products/${id}`);
   return res;
 }

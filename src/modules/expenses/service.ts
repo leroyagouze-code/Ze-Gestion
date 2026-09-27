@@ -2,8 +2,10 @@ import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { expenses, paymentMethods, users } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
+import { assertOwned } from "@/db/owned";
+import { isOwnFileUrl } from "@/lib/storage";
 import { audit } from "@/lib/audit";
-import { NotFoundError } from "@/lib/errors";
+import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
 import { num, optText, optUuid } from "@/lib/zod";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
@@ -61,6 +63,8 @@ export async function createExpense(ctx: AppContext, raw: z.input<typeof expense
   ctxAssert(ctx, "expenses.edit");
   const input = expenseSchema.parse(raw);
   return withTenant(ctx, async (tx) => {
+    await assertOwned(tx, paymentMethods, input.paymentMethodId, "Moyen de paiement");
+    if (input.attachmentUrl && !isOwnFileUrl(input.attachmentUrl, ctx.companyId, "private")) throw new BusinessError("Justificatif invalide");
     const [e] = await tx
       .insert(expenses)
       .values({ companyId: ctx.companyId, storeId: ctx.storeId, userId: ctx.userId, ...input })

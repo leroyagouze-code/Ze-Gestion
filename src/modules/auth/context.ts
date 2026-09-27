@@ -6,7 +6,7 @@ import { ADMIN_ROLE, ALL_PERMISSIONS, assertCan, can, type Permission } from "@/
 
 export type AppContext = TenantContext & {
   userId: string;
-  user: { fullName: string; email: string; isSuperAdmin: boolean };
+  user: { fullName: string; email: string; isSuperAdmin: boolean; mustChangePassword: boolean };
   company: NonNullable<Awaited<ReturnType<typeof getCompany>>>;
   roleName: string;
   isAdmin: boolean;
@@ -16,7 +16,7 @@ export type AppContext = TenantContext & {
 };
 
 export async function loadContext(
-  user: { userId: string; fullName: string; email: string; isSuperAdmin: boolean },
+  user: { userId: string; fullName: string; email: string; isSuperAdmin: boolean; mustChangePassword?: boolean },
   companyId: string,
 ): Promise<AppContext | null> {
   const company = await getCompany(companyId);
@@ -41,7 +41,7 @@ export async function loadContext(
   return {
     companyId,
     userId: user.userId,
-    user: { fullName: user.fullName, email: user.email, isSuperAdmin: user.isSuperAdmin },
+    user: { fullName: user.fullName, email: user.email, isSuperAdmin: user.isSuperAdmin, mustChangePassword: !!user.mustChangePassword },
     company,
     roleName: data.roleName,
     isAdmin,

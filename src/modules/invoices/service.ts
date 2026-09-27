@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { contains } from "@/lib/search";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -8,10 +9,12 @@ import {
   paymentMethods,
   payments,
   saleItems,
+  products,
   sales,
   type CustomerSnapshot,
 } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
+import { assertCollectMethod, assertOwned } from "@/db/owned";
 import { audit } from "@/lib/audit";
 import { newToken, getCompany } from "@/lib/auth/session";
 import { BusinessError, NotFoundError } from "@/lib/errors";
@@ -114,6 +117,7 @@ export async function createManualInvoice(ctx: AppContext, raw: z.input<typeof m
   return withTenant(ctx, async (tx) => {
     const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)))[0] : null;
     if (input.customerId && !customer) throw new NotFoundError("Client");
+    for (const i of input.items) await assertOwned(tx, products, i.productId, "Produit");
     const snap = snapshot(customer) ?? (input.customerName ? { name: input.customerName } : null);
     const number = await nextDocumentNumber(tx, ctx.companyId, "invoice");
     const [inv] = await tx
@@ -169,6 +173,7 @@ export async function recordInvoicePayment(ctx: AppContext, invoiceId: string, p
     if (!inv) throw new NotFoundError("Facture");
     if (inv.saleId) throw new BusinessError("Facture liée à une vente : encaisser la créance depuis la fiche client");
     if (inv.status === "cancelled" || inv.status === "paid") throw new BusinessError("Facture déjà soldée ou annulée");
+    await assertCollectMethod(tx, paymentMethodId);
     const pay = round(Math.min(amount, inv.total - inv.paidAmount), decimals);
     if (pay <= 0) throw new BusinessError("Montant invalide");
     const paidAmount = round(inv.paidAmount + pay, decimals);
@@ -214,7 +219,7 @@ export async function listInvoices(ctx: AppContext, opts: { page?: number; statu
   return withTenant(ctx, async (tx) => {
     const conds = [];
     if (opts.status) conds.push(sql`${invoices.status} = ${opts.status}`);
-    if (opts.q) conds.push(sql`(${invoices.number} ilike ${"%" + opts.q + "%"} or ${invoices.customerSnapshot}->>'name' ilike ${"%" + opts.q + "%"})`);
+    if (opts.q) conds.push(sql`(${invoices.number} ilike ${contains(opts.q)} or ${invoices.customerSnapshot}->>'name' ilike ${contains(opts.q)})`);
     const where = conds.length ? and(...conds) : undefined;
     const rows = await tx
       .select({
@@ -256,7 +261,7 @@ export async function getPublicInvoice(token: string) {
   const companyId = res.rows[0]?.company_id;
   if (!companyId) return null;
   const company = await getCompany(companyId);
-  if (!company) return null;
+  if (!company || company.status !== "active") return null;
   const data = await withTenant({ companyId, userId: null }, async (tx) => {
     const [row] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.publicToken, token));
     return row ? loadInvoice(tx, row.id) : null;

@@ -36,6 +36,13 @@
       "when": 1790490929184,
       "tag": "0004_acces_par_niveau",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790492120947,
+      "tag": "0005_securite",
+      "breakpoints": true
     }
   ]
 }
