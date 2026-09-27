@@ -47,7 +47,8 @@ function run(bin, args, log) {
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (out += d));
     child.on("error", reject);
-    child.on("close", (code) => {
+    // « exit » et non « close » : sous Windows, postgres lancé par pg_ctl garde les sorties ouvertes
+    child.on("exit", (code) => {
       log(`${path.basename(bin)} ${args.join(" ")} -> ${code}\n${out.trim()}`);
       code === 0 ? resolve(out) : reject(new Error(`${path.basename(bin)} a échoué (code ${code}) : ${out.trim().slice(-500)}`));
     });
