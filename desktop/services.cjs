@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
+const pkg = require("./package.json");
 
 const DB_NAME = "zegestion";
 const exe = (name) => (process.platform === "win32" ? `${name}.exe` : name);
@@ -162,6 +163,9 @@ async function startServices({ resourcesDir, dataDir, pgBin, log = () => {} }) {
         UPLOAD_DIR: path.join(dataDir, "uploads"),
         ZE_EDITION: "desktop",
         ZE_INSTALL_ID: cfg.installId,
+        ZE_APP_VERSION: pkg.version,
+        // Serveur en ligne qui reçoit le signal d'installation (vide = aucun envoi)
+        ZE_SERVER_URL: process.env.ZE_SERVER_URL || pkg.zeGestion?.serverUrl || "",
       },
     });
     // Dernières lignes du serveur, reprises dans le message d'erreur

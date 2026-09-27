@@ -4,6 +4,8 @@ import { db, type Tx } from "./index";
 export type TenantContext = {
   companyId: string;
   userId: string | null;
+  /** Fuseau de l'entreprise : les calculs par jour en SQL (date_trunc…) se font dans son heure locale. */
+  company?: { timezone?: string | null };
 };
 
 /**
@@ -16,6 +18,8 @@ export async function withTenant<T>(ctx: TenantContext, fn: (tx: Tx) => Promise<
     await tx.execute(
       sql`select set_config('app.company_id', ${ctx.companyId}, true), set_config('app.user_id', ${ctx.userId ?? ""}, true)`,
     );
+    const tz = ctx.company?.timezone;
+    if (tz && /^[A-Za-z0-9_+\-/]+$/.test(tz)) await tx.execute(sql`select set_config('TimeZone', ${tz}, true)`);
     return fn(tx);
   });
 }

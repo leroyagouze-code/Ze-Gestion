@@ -32,33 +32,37 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
         <div className="space-y-4 xl:col-span-2">
           <Card title="Produits fournis">
             {data.products.length === 0 ? <p className="text-sm text-slate-500">Aucun produit rattaché.</p> : (
-              <table className="table">
-                <tbody>
-                  {data.products.map((p) => (
-                    <tr key={p.id}>
-                      <td><Link href={`/products/${p.id}`} className="hover:text-brand-700">{p.name}</Link></td>
-                      <td className="text-slate-500">{p.sku}</td>
-                      {canCost && <td className="text-right">{m(p.purchasePrice)}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <tbody>
+                    {data.products.map((p) => (
+                      <tr key={p.id}>
+                        <td><Link href={`/products/${p.id}`} className="hover:text-brand-700">{p.name}</Link></td>
+                        <td className="text-slate-500">{p.sku}</td>
+                        {canCost && <td className="text-right">{m(p.purchasePrice)}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
           <Card title="Historique des entrées de stock">
             {data.receipts.length === 0 ? <p className="text-sm text-slate-500">Aucune entrée.</p> : (
-              <table className="table">
-                <tbody>
-                  {data.receipts.map((r) => (
-                    <tr key={r.id}>
-                      <td>{formatDate(r.createdAt, true)}</td>
-                      <td>{r.productName}</td>
-                      <td className="text-right">+{formatQty(r.quantity)}</td>
-                      <td className="text-slate-500">{r.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <tbody>
+                    {data.receipts.map((r) => (
+                      <tr key={r.id}>
+                        <td>{formatDate(r.createdAt, true)}</td>
+                        <td>{r.productName}</td>
+                        <td className="text-right">+{formatQty(r.quantity)}</td>
+                        <td className="text-slate-500">{r.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
         </div>

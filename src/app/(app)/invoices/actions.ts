@@ -11,7 +11,7 @@ import type { manualInvoiceSchema } from "@/modules/invoices/service";
 export async function invoicePaymentAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
   const ctx = await requireContext();
   const res = await runAction(async () => {
-    const paid = await recordInvoicePayment(ctx, id, String(fd.get("paymentMethodId")), Number(String(fd.get("amount")).replace(",", ".")), String(fd.get("reference") ?? "") || null);
+    const paid = await recordInvoicePayment(ctx, id, String(fd.get("paymentMethodId")), Number(String(fd.get("amount") ?? "").replace(/\s/g, "").replace(",", ".")), String(fd.get("reference") ?? "") || null);
     return `Paiement de ${formatMoney(paid, ctx.company.currency)} enregistré`;
   });
   revalidatePath(`/invoices/${id}`);

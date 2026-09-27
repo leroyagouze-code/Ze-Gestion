@@ -1,4 +1,5 @@
 import { ActionForm, SubmitButton } from "@/components/action-form";
+import { ConfirmButton } from "@/components/confirm-button";
 import { Card, EmptyState, Field, PageHeader, Pagination, SelectField, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatDate, localDate } from "@/lib/dates";
@@ -34,16 +35,17 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                     {data.rows.map((e) => (
                       <tr key={e.id}>
                         <td>{formatDate(e.spentOn)}</td>
-                        <td>{e.category}{e.method && <div className="text-xs text-slate-500">{e.method}</div>}</td>
-                        <td className="hidden md:table-cell">
-                          {e.description}
-                          {e.attachmentUrl && <a href={e.attachmentUrl} target="_blank" className="ml-2 text-brand-700">Justificatif</a>}
+                        <td>
+                          {e.category}
+                          {e.method && <div className="text-xs text-slate-500">{e.method}</div>}
+                          {e.attachmentUrl && <a href={e.attachmentUrl} target="_blank" className="text-xs text-brand-700 hover:underline">Justificatif</a>}
                         </td>
+                        <td className="hidden md:table-cell">{e.description}</td>
                         <td className="text-right">{formatMoney(e.amount, ctx.company.currency)}</td>
                         <td className="text-right">
                           {canEdit && (
                             <form action={deleteExpenseAction.bind(null, e.id)}>
-                              <button className="text-xs text-red-600 hover:underline">Supprimer</button>
+                              <ConfirmButton message="Supprimer cette dépense ?" className="px-2 py-1 text-sm text-red-600 hover:underline">Supprimer</ConfirmButton>
                             </form>
                           )}
                         </td>

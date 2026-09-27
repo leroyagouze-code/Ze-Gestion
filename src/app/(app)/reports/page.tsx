@@ -71,23 +71,27 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </TableWrap>
         </Card>
         <Card title="Encaissements par moyen de paiement">
-          <table className="table">
-            <tbody>
-              {r.byPayment.map((p) => (
-                <tr key={p.method}><td>{p.method}</td><td className="text-right">{p.count}</td><td className="text-right">{m(p.total)}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <tbody>
+                {r.byPayment.map((p) => (
+                  <tr key={p.method}><td>{p.method}</td><td className="text-right">{p.count}</td><td className="text-right">{m(p.total)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
         <Card title="TVA par taux">
-          <table className="table">
-            <thead><tr><th>Taux</th><th className="text-right">Base HT</th><th className="text-right">TVA</th></tr></thead>
-            <tbody>
-              {r.byTax.map((t) => (
-                <tr key={t.rate}><td>{formatQty(t.rate)} %</td><td className="text-right">{m(t.base)}</td><td className="text-right">{m(t.tax)}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead><tr><th>Taux</th><th className="text-right">Base HT</th><th className="text-right">TVA</th></tr></thead>
+              <tbody>
+                {r.byTax.map((t) => (
+                  <tr key={t.rate}><td>{formatQty(t.rate)} %</td><td className="text-right">{m(t.base)}</td><td className="text-right">{m(t.tax)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       </div>
     </>

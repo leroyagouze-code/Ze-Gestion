@@ -43,8 +43,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <Stat label="Clients" value={s.customerCount} />
         <Stat label="Dettes clients" value={m(s.customerDebt)} tone={s.customerDebt > 0 ? "warn" : "default"} />
         <Stat label="Dettes fournisseurs" value={m(s.supplierDebt)} tone={s.supplierDebt > 0 ? "warn" : "default"} />
-        <Stat label="En rupture" value={s.outOfStock.length} tone={s.outOfStock.length ? "bad" : "default"} />
-        <Stat label="Bientôt en rupture" value={s.lowStock.length} tone={s.lowStock.length ? "warn" : "default"} />
+        <Stat label="En rupture" value={s.stockCounts.out} tone={s.stockCounts.out ? "bad" : "default"} />
+        <Stat label="Bientôt en rupture" value={s.stockCounts.low} tone={s.stockCounts.low ? "warn" : "default"} />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -57,7 +57,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Card title="Alertes de stock" actions={<Link href="/stock?filter=low" className="text-sm text-brand-700">Voir tout</Link>}>
+        <Card title="Alertes de stock" actions={<Link href={s.stockCounts.out ? "/stock?filter=out" : "/stock?filter=low"} className="text-sm text-brand-700">Voir tout</Link>}>
           {s.outOfStock.length + s.lowStock.length === 0 ? (
             <p className="text-sm text-slate-500">Aucune alerte. 👍</p>
           ) : (

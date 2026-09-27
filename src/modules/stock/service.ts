@@ -203,7 +203,14 @@ export async function stockAlerts(ctx: AppContext, limit = 10) {
       .where(and(eq(products.isActive, true), isNotNull(products.expiryDate), lte(products.expiryDate, in30)))
       .orderBy(products.expiryDate)
       .limit(limit);
-    return { low, expiring };
+    const [counts] = await tx
+      .select({
+        out: sql<number>`count(*) filter (where ${total} <= 0)::int`,
+        low: sql<number>`count(*) filter (where ${total} > 0 and ${total} <= ${products.minStock})::int`,
+      })
+      .from(products)
+      .where(eq(products.isActive, true));
+    return { low, expiring, counts };
   });
 }
 

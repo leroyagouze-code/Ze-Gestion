@@ -21,6 +21,7 @@ const ALLOWED: Record<string, string> = {
 };
 const TYPE_BY_EXT: Record<string, string> = Object.fromEntries(Object.entries(ALLOWED).map(([t, e]) => [e, t]));
 export const MAX_UPLOAD = 2 * 1024 * 1024;
+export const MAX_LOGO_UPLOAD = 10 * 1024 * 1024;
 /** Espace disque maximum par entreprise. */
 export const COMPANY_QUOTA = Number(process.env.UPLOAD_QUOTA_MB ?? 200) * 1024 * 1024;
 
@@ -47,13 +48,19 @@ async function dirSize(dir: string): Promise<number> {
  * Enregistre un fichier. Les appelants vérifient les droits AVANT d'appeler cette fonction
  * (sinon n'importe quel membre pourrait remplir le disque).
  */
-export async function putFile(companyId: string, file: File, opts: { imagesOnly?: boolean; private?: boolean } = {}) {
+export async function putFile(companyId: string, file: File, opts: { imagesOnly?: boolean; private?: boolean; logo?: boolean } = {}) {
   if (!/^[0-9a-f-]{36}$/.test(companyId)) throw new BusinessError("Entreprise invalide");
-  if (file.size > MAX_UPLOAD) throw new BusinessError("Fichier trop volumineux (2 Mo maximum)");
-  const buf = Buffer.from(await file.arrayBuffer());
-  const ext = sniff(buf);
+  // Un logo est réduit et converti en PNG : il peut donc arriver plus lourd (photo, export haute définition)
+  const max = opts.logo ? MAX_LOGO_UPLOAD : MAX_UPLOAD;
+  if (file.size > max) throw new BusinessError(`Fichier trop volumineux (${max / 1024 / 1024} Mo maximum)`);
+  let buf: Buffer = Buffer.from(await file.arrayBuffer());
+  let ext = sniff(buf);
   if (!ext) throw new BusinessError("Format non autorisé (PNG, JPEG, WebP ou PDF)");
   if (opts.imagesOnly && ext === "pdf") throw new BusinessError("Image attendue (PNG, JPEG ou WebP)");
+  if (opts.logo) {
+    buf = await normalizeLogo(buf);
+    ext = "png";
+  }
   const base = path.join(ROOT, companyId);
   if ((await dirSize(base)) + buf.length > COMPANY_QUOTA) {
     throw new BusinessError("Espace de stockage de l'entreprise plein. Supprimez des fichiers ou contactez le support.");
@@ -85,4 +92,36 @@ export async function readStoredFile(url: string) {
   } catch {
     return null;
   }
+}
+
+/** Logo : bords transparents retirés, 1000 × 500 px au plus, en PNG (lisible par le générateur de PDF). */
+export async function normalizeLogo(buf: Buffer) {
+  const { default: sharp } = await import("sharp");
+  try {
+    return await sharp(buf).trim().resize(1000, 500, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
+  } catch {
+    throw new BusinessError("Image illisible. Essayez un fichier PNG ou JPEG.");
+  }
+}
+
+/**
+ * Logo clair sur fond transparent (ex. logo blanc) : invisible sur une facture blanche.
+ * Renvoie vrai si la moyenne des pixels visibles est très claire.
+ */
+export async function isLightTransparentLogo(buf: Buffer) {
+  const { default: sharp } = await import("sharp");
+  const { data, info } = await sharp(buf).resize(64, 64, { fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let sum = 0;
+  let n = 0;
+  let transparent = 0;
+  for (let i = 0; i < data.length; i += info.channels) {
+    const a = data[i + 3];
+    if (a < 128) {
+      transparent++;
+      continue;
+    }
+    sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+    n++;
+  }
+  return transparent > 0 && n > 0 && sum / n > 215;
 }
