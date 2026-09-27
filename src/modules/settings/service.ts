@@ -9,7 +9,7 @@ import { isTimeZone } from "@/lib/countries";
 import { isTaxMode } from "@/lib/money";
 import { MODULE_KEYS, isModuleKey } from "@/lib/modules";
 import { TRADE_KEYS, type TradeKey } from "@/lib/trades";
-import { optText } from "@/lib/zod";
+import { num, optText } from "@/lib/zod";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
 
 export const companySchema = z.object({
@@ -84,7 +84,7 @@ export async function getSettings(ctx: AppContext) {
 
 export const taxSchema = z.object({
   name: z.string().trim().min(1).max(60),
-  rate: z.coerce.number().min(0).max(100),
+  rate: num().pipe(z.number().max(100)),
   isDefault: z.coerce.boolean().default(false),
 });
 

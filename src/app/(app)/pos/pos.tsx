@@ -22,7 +22,8 @@ type Line = { product: Product; quantity: number; discount: number; qtyText?: st
 /** Articles vendus au poids ou au volume : saisie décimale ou « pour 500 F ». */
 const MEASURED = new Set(["kg", "g", "litre", "l", "mètre"]);
 type Method = { id: string; label: string; type: string };
-type Pay = { paymentMethodId: string; amount: string; reference: string };
+/** auto : montant rempli par la caisse, qui suit le total tant que le caissier ne le modifie pas. */
+type Pay = { paymentMethodId: string; amount: string; reference: string; auto?: boolean };
 
 const price = (p: Product) => (p.promoPrice != null && p.promoPrice > 0 ? p.promoPrice : p.salePrice);
 
@@ -110,10 +111,15 @@ export function Pos({
 
   function pickMethod(id: string) {
     setPays((ps) => {
-      if (ps.length <= 1) return [{ paymentMethodId: id, amount: String(totals.total), reference: "" }];
+      if (ps.length <= 1) return [{ paymentMethodId: id, amount: String(totals.total), reference: "", auto: true }];
       return ps;
     });
   }
+
+  // Le panier change après le choix du moyen de paiement : le montant rempli automatiquement suit
+  useEffect(() => {
+    setPays((ps) => (ps.length === 1 && ps[0].auto && ps[0].amount !== String(totals.total) ? [{ ...ps[0], amount: String(totals.total) }] : ps));
+  }, [totals.total]);
 
   function reset() {
     setCart([]);
@@ -166,10 +172,10 @@ export function Pos({
                 <div className="truncate text-sm font-medium">{l.product.name}</div>
                 <div className="text-xs text-slate-500">{m(price(l.product))} / {l.product.unit}</div>
               </div>
-              <div className="text-right text-sm font-semibold">{m(totals.lines[i]?.lineTotal ?? 0)}</div>
+              <div className="text-right text-sm font-semibold">{m((taxMode === "total" ? totals.lines[i]?.net : totals.lines[i]?.lineTotal) ?? 0)}</div>
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, qtyText: undefined, quantity: Math.max(x.quantity - 1, 0.001) } : x)))}><Minus size={16} /></button>
+              <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => (l.quantity <= 1 ? c.filter((_, j) => j !== i) : c.map((x, j) => (j === i ? { ...x, qtyText: undefined, quantity: x.quantity - 1 } : x))))}><Minus size={16} /></button>
               <input
                 className="input h-9 w-20 text-center"
                 inputMode="decimal"
@@ -243,7 +249,7 @@ export function Pos({
             <select className="input" value={p.paymentMethodId} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, paymentMethodId: e.target.value } : x)))}>
               {paymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.label}</option>)}
             </select>
-            <input className="input w-32" inputMode="decimal" value={p.amount} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} aria-label="Montant reçu" />
+            <input className="input w-32" inputMode="decimal" value={p.amount} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value, auto: false } : x)))} aria-label="Montant reçu" />
             <input className="input hidden w-32 sm:block" placeholder="Réf." value={p.reference} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
             {pays.length > 1 && <button className="btn-ghost px-2" onClick={() => setPays((ps) => ps.filter((_, j) => j !== i))} aria-label="Retirer"><X size={16} /></button>}
           </div>

@@ -93,7 +93,13 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
             <ActionForm action={grantFreeAccessAction.bind(null, c.id)} className="grid gap-3 sm:grid-cols-2">
               <p className="text-sm text-slate-600 sm:col-span-2">Accès complet sans paiement : promotion, partenaire, compte de démonstration. La durée s&apos;ajoute à une période en cours.</p>
               <SelectField label="Durée" name="duration" defaultValue="1" options={Object.entries(FREE_DURATIONS).map(([value, label]) => ({ value, label }))} />
-              <SelectField label="Formule" name="planId" defaultValue={plan?.id} options={d.plans.map((p) => ({ value: p.id, label: p.name }))} />
+              <SelectField
+                label="Formule"
+                name="planId"
+                // compte offert : la formule la plus complète par défaut, sauf si l'entreprise en a déjà une payante
+                defaultValue={plan && plan.monthlyPrice > 0 ? plan.id : [...d.plans].sort((a, b) => b.monthlyPrice - a.monthlyPrice)[0]?.id}
+                options={d.plans.map((p) => ({ value: p.id, label: p.name }))}
+              />
               <Field label="Motif (facultatif)" name="note" placeholder="Ex. partenaire ZE GROUP" className="sm:col-span-2" />
               <div className="sm:col-span-2"><SubmitButton>Activer gratuitement</SubmitButton></div>
             </ActionForm>

@@ -44,28 +44,30 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
       />
       <div className="grid gap-4 xl:grid-cols-3">
         <Card title="Articles" className="xl:col-span-2">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Produit</th>
-                <th className="text-right">Qté</th>
-                <th className="text-right">P.U. {priceBasis(s.taxMode)}</th>
-                <th className="text-right">Remise</th>
-                <th className="text-right">Total {priceBasis(s.taxMode)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.items.map((it) => (
-                <tr key={it.id}>
-                  <td>{it.productId ? <Link href={`/products/${it.productId}`} className="hover:text-brand-700">{it.name}</Link> : it.name}</td>
-                  <td className="text-right">{formatQty(it.quantity)}</td>
-                  <td className="text-right">{m(it.unitPrice)}</td>
-                  <td className="text-right">{it.discount ? m(it.discount) : "—"}</td>
-                  <td className="text-right">{m(shownLineTotal(it, s.taxMode))}</td>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Produit</th>
+                  <th className="text-right">Qté</th>
+                  <th className="text-right">P.U. {priceBasis(s.taxMode)}</th>
+                  <th className="text-right">Remise</th>
+                  <th className="text-right">Total {priceBasis(s.taxMode)}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {d.items.map((it) => (
+                  <tr key={it.id}>
+                    <td>{it.productId ? <Link href={`/products/${it.productId}`} className="hover:text-brand-700">{it.name}</Link> : it.name}</td>
+                    <td className="text-right">{formatQty(it.quantity)}</td>
+                    <td className="text-right">{m(it.unitPrice)}</td>
+                    <td className="text-right">{it.discount ? m(it.discount) : "—"}</td>
+                    <td className="text-right">{m(shownLineTotal(it, s.taxMode))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="ml-auto mt-4 max-w-xs space-y-1 text-sm">
             <div className="flex justify-between"><span>Total HT</span><span>{m(s.subtotal)}</span></div>
             <div className="flex justify-between"><span>TVA</span><span>{m(s.taxTotal)}</span></div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/confirm-button";
 import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Badge, Card, Field, PageHeader, SelectField, TableWrap, TextArea } from "@/components/ui";
@@ -65,7 +66,7 @@ export default async function RepairPage({ params }: { params: Promise<{ id: str
                         {editable && (
                           <td className="text-right">
                             <form action={removeRepairItemAction.bind(null, o.id, i.id)}>
-                              <button className="text-xs text-red-600 hover:underline">Retirer</button>
+                              <ConfirmButton message="Retirer cette ligne de l'ordre ?" className="px-2 py-1 text-sm text-red-600 hover:underline">Retirer</ConfirmButton>
                             </form>
                           </td>
                         )}
@@ -106,8 +107,8 @@ export default async function RepairPage({ params }: { params: Promise<{ id: str
                 <ActionForm action={addRepairItemAction.bind(null, o.id)} className="grid grid-cols-2 gap-3" resetOnSuccess>
                   <input type="hidden" name="kind" value="labor" />
                   <Field label="Travail effectué" name="description" required placeholder="Ex. Vidange + remplacement plaquettes" className="col-span-2" />
-                  <Field label="Heures" name="quantity" inputMode="decimal" defaultValue={1} required />
-                  <Field label="Prix par heure" name="unitPrice" inputMode="decimal" required />
+                  <Field label="Quantité (heures ou forfait)" name="quantity" inputMode="decimal" defaultValue={1} required />
+                  <Field label="Prix unitaire" name="unitPrice" inputMode="decimal" required />
                   <SubmitButton className="btn-secondary col-span-2" pendingText="…">Ajouter</SubmitButton>
                 </ActionForm>
               </Card>
@@ -165,7 +166,7 @@ export default async function RepairPage({ params }: { params: Promise<{ id: str
                   </form>
                 )}
                 <form action={setRepairStatusAction.bind(null, o.id, "cancelled")}>
-                  <button className="btn-ghost w-full text-red-600">Annuler l&apos;ordre</button>
+                  <ConfirmButton message="Annuler cet ordre de réparation ? Il ne pourra plus être modifié." className="btn-ghost w-full text-red-600">Annuler l&apos;ordre</ConfirmButton>
                 </form>
               </div>
             </Card>

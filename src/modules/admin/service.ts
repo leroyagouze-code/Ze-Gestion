@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { num } from "@/lib/zod";
 import { z } from "zod";
 import { db, type Tx } from "@/db";
 import { auditLogs, companies, plans, subscriptionPayments, subscriptions, users } from "@/db/schema";
@@ -163,7 +164,7 @@ export const PAYMENT_METHODS = { tmoney: "TMoney", flooz: "Flooz", cash: "Espèc
 export const paymentSchema = z.object({
   planId: z.string().uuid(),
   months: z.coerce.number().int().min(1).max(36),
-  amount: z.coerce.number().min(0).max(100_000_000),
+  amount: num().pipe(z.number().max(100_000_000)),
   method: z.enum(Object.keys(PAYMENT_METHODS) as [keyof typeof PAYMENT_METHODS, ...(keyof typeof PAYMENT_METHODS)[]]),
   reference: z.string().trim().max(100).optional().transform((v) => v || null),
 });

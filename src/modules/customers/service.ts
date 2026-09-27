@@ -7,7 +7,7 @@ import { assertCollectMethod } from "@/db/owned";
 import { audit } from "@/lib/audit";
 import { NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
-import { optText } from "@/lib/zod";
+import { num, optText } from "@/lib/zod";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
 
 export const customerSchema = z.object({
@@ -93,7 +93,7 @@ export async function updateCustomer(ctx: AppContext, id: string, raw: CustomerI
 export const debtPaymentSchema = z.object({
   customerId: z.string().uuid(),
   paymentMethodId: z.string().uuid(),
-  amount: z.coerce.number().positive("Montant invalide"),
+  amount: num().pipe(z.number().positive("Montant invalide")),
   reference: optText(100),
 });
 

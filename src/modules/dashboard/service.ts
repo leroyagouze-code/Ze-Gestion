@@ -48,10 +48,10 @@ export function periodRange(key: PeriodKey, custom?: { from?: string; to?: strin
 export async function dashboardStats(ctx: AppContext, range: { from: Date; to: Date }) {
   ctxAssert(ctx, "dashboard.view");
   const showProfit = ctxCan(ctx, "reports.profit");
-  const now = new Date();
-  const startDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startWeek = new Date(startDay.getTime() - ((now.getDay() + 6) % 7) * 86400_000);
-  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const tz = ctx.company.timezone;
+  const startDay = periodRange("today", undefined, new Date(), tz).from;
+  const startWeek = periodRange("week", undefined, new Date(), tz).from;
+  const startMonth = periodRange("month", undefined, new Date(), tz).from;
   const done = eq(sales.status, "completed");
 
   return withTenant(ctx, async (tx) => {
@@ -76,7 +76,7 @@ export async function dashboardStats(ctx: AppContext, range: { from: Date; to: D
     const [exp] = await tx
       .select({ total: sql<number>`coalesce(sum(${expenses.amount}), 0)::float8` })
       .from(expenses)
-      .where(and(gte(expenses.spentOn, localDate(range.from)), lt(expenses.spentOn, localDate(range.to))));
+      .where(and(gte(expenses.spentOn, localDate(range.from, tz)), lt(expenses.spentOn, localDate(range.to, tz))));
 
     const [stock] = await tx
       .select({
@@ -137,6 +137,7 @@ export async function dashboardStats(ctx: AppContext, range: { from: Date; to: D
       top,
       outOfStock,
       lowStock,
+      stockCounts: alerts.counts,
       expiring: alerts.expiring,
     };
   });

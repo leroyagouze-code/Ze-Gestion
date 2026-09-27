@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { localDate } from "@/lib/dates";
-import { expenses, paymentMethods, payments, products, saleItems, sales, stockLevels } from "@/db/schema";
+import { expenses, invoices, paymentMethods, payments, products, saleItems, sales, stockLevels } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
 
@@ -42,7 +42,15 @@ export async function salesReport(ctx: AppContext, range: { from: Date; to: Date
       .select({ method: paymentMethods.label, total: sql<number>`sum(${payments.amount})::float8`, count: sql<number>`count(*)::int` })
       .from(payments)
       .innerJoin(paymentMethods, eq(paymentMethods.id, payments.paymentMethodId))
-      .where(and(gte(payments.createdAt, range.from), lt(payments.createdAt, range.to)))
+      .where(
+        and(
+          gte(payments.createdAt, range.from),
+          lt(payments.createdAt, range.to),
+          // l'argent d'une vente ou d'une facture annulée ne compte plus comme encaissé
+          sql`not exists (select 1 from ${sales} where ${sales.id} = ${payments.saleId} and ${sales.status} = 'cancelled')`,
+          sql`not exists (select 1 from ${invoices} where ${invoices.id} = ${payments.invoiceId} and ${invoices.status} = 'cancelled')`,
+        ),
+      )
       .groupBy(paymentMethods.label)
       .orderBy(desc(sql`sum(${payments.amount})`));
 
@@ -61,7 +69,7 @@ export async function salesReport(ctx: AppContext, range: { from: Date; to: Date
     const [exp] = await tx
       .select({ total: sql<number>`coalesce(sum(${expenses.amount}), 0)::float8` })
       .from(expenses)
-      .where(and(gte(expenses.spentOn, localDate(range.from)), lt(expenses.spentOn, localDate(range.to))));
+      .where(and(gte(expenses.spentOn, localDate(range.from, ctx.company.timezone)), lt(expenses.spentOn, localDate(range.to, ctx.company.timezone))));
 
     const strip = <T extends { cost: number }>(r: T) => (showProfit ? r : { ...r, cost: 0 });
     return { byDay: byDay.map(strip), byProduct: byProduct.map(strip), byPayment, byTax, expenses: exp.total, showProfit };

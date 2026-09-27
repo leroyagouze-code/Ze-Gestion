@@ -207,8 +207,9 @@ export async function recordInvoicePayment(ctx: AppContext, invoiceId: string, p
     if (inv.saleId) throw new BusinessError("Facture liée à une vente : encaisser la créance depuis la fiche client");
     if (inv.status === "cancelled" || inv.status === "paid") throw new BusinessError("Facture déjà soldée ou annulée");
     await assertCollectMethod(tx, paymentMethodId);
+    if (!Number.isFinite(amount)) throw new BusinessError("Montant invalide");
     const pay = round(Math.min(amount, inv.total - inv.paidAmount), decimals);
-    if (pay <= 0) throw new BusinessError("Montant invalide");
+    if (!(pay > 0)) throw new BusinessError("Montant invalide");
     const paidAmount = round(inv.paidAmount + pay, decimals);
     await tx
       .update(invoices)
