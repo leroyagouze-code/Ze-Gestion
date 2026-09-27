@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { memberships, roles, stores } from "@/db/schema";
 import { withTenant, type TenantContext } from "@/db/tenant";
+import { readOnlyPermissions, subscriptionState, type SubscriptionState } from "@/modules/billing/access";
 import { getCompany } from "@/lib/auth/session";
 import { ADMIN_ROLE, ALL_PERMISSIONS, assertCan, can, type Permission } from "@/lib/permissions";
 
@@ -11,6 +12,7 @@ export type AppContext = TenantContext & {
   roleName: string;
   isAdmin: boolean;
   permissions: string[];
+  subscription: SubscriptionState;
   storeId: string;
   ip?: string | null;
 };
@@ -38,6 +40,9 @@ export async function loadContext(
   });
   if (!data) return null;
   const isAdmin = data.isSystem && data.roleName === ADMIN_ROLE;
+  const subscription = await subscriptionState(companyId);
+  // L'administrateur détient toujours tous les droits, même ceux ajoutés après la création du rôle.
+  const granted = isAdmin ? [...ALL_PERMISSIONS] : data.permissions;
   return {
     companyId,
     userId: user.userId,
@@ -45,8 +50,10 @@ export async function loadContext(
     company,
     roleName: data.roleName,
     isAdmin,
-    // L'administrateur détient toujours tous les droits, même ceux ajoutés après la création du rôle.
-    permissions: isAdmin ? [...ALL_PERMISSIONS] : data.permissions,
+    // Essai terminé ou abonnement impayé : lecture seule, appliquée à la source des droits
+    // (chaque écriture exige une permission d'action, donc toutes sont refusées côté serveur).
+    permissions: subscription.readOnly ? readOnlyPermissions(granted) : granted,
+    subscription,
     storeId: data.storeId,
   };
 }

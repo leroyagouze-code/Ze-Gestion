@@ -43,6 +43,7 @@ export async function platformStats(u: { isSuperAdmin: boolean }) {
       createdAt: companies.createdAt,
       plan: plans.name,
       subStatus: subscriptions.status,
+      trialEndsAt: subscriptions.trialEndsAt,
     })
     .from(companies)
     .leftJoin(subscriptions, eq(subscriptions.companyId, companies.id))
@@ -58,6 +59,20 @@ export async function setCompanyStatus(admin: { userId: string; isSuperAdmin: bo
     await tx.update(companies).set({ status, updatedAt: new Date() }).where(eq(companies.id, companyId));
     await tx.execute(sql`select set_config('app.user_id', ${admin.userId}, true)`);
     await tx.insert(auditLogs).values({ companyId, userId: admin.userId, action: `platform.company_${status}`, entityType: "company", entityId: companyId });
+  });
+}
+
+/** Prolonge l'essai (ou le rouvre s'il est terminé) : la société repasse en accès complet. */
+export async function extendTrial(admin: { userId: string; isSuperAdmin: boolean }, companyId: string, days = 14) {
+  assertSuperAdmin(admin);
+  await db.transaction(async (tx) => {
+    const [sub] = await tx.select().from(subscriptions).where(eq(subscriptions.companyId, companyId)).limit(1);
+    if (!sub) throw new BusinessError("Aucun abonnement pour cette entreprise");
+    const from = Math.max(Date.now(), sub.trialEndsAt?.getTime() ?? 0);
+    const trialEndsAt = new Date(from + days * 86_400_000);
+    await tx.update(subscriptions).set({ status: "trialing", trialEndsAt, updatedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+    await tx.execute(sql`select set_config('app.user_id', ${admin.userId}, true)`);
+    await tx.insert(auditLogs).values({ companyId, userId: admin.userId, action: "platform.trial_extended", entityType: "company", entityId: companyId, metadata: { days, trialEndsAt } });
   });
 }
 
