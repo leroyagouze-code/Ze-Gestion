@@ -6,4 +6,8 @@ uploads
 *.tsbuildinfo
 next-env.d.ts
 coverage
+deploy/.env
 deploy/backups
+desktop/node_modules
+desktop/app
+desktop/dist

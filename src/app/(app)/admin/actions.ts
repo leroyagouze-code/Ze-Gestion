@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { runAction, type ActionState } from "@/lib/actions";
 import { getSession } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
+import { issueLicense } from "@/modules/billing/license";
 import { extendTrial, recordSubscriptionPayment, setCompanyPlan, setCompanyStatus, setUnlimited } from "@/modules/admin/service";
 
 async function admin() {
@@ -61,4 +62,16 @@ export async function setUnlimitedAction(companyId: string, on: boolean, _s: Act
     refresh(companyId);
     return on ? "Accès illimité activé" : "Accès illimité retiré";
   });
+}
+
+export async function issueLicenseAction(_s: ActionState, fd: FormData): Promise<ActionState> {
+  const s = await admin();
+  let data: unknown;
+  const res = await runAction(async () => {
+    const row = await issueLicense(s, Object.fromEntries(fd));
+    data = { code: row.code, installId: row.installId, plan: row.plan, expiresAt: row.expiresAt?.toISOString() ?? null };
+    revalidatePath("/admin/licences");
+    return "Code de licence créé";
+  });
+  return data ? { ...res, data } : res;
 }
