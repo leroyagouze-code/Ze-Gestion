@@ -6,6 +6,8 @@ Web App responsive / PWA pour les propriétaires, agences et locataires au Togo 
 
 Architecture, schéma de base de données, pages, API, rôles et parcours : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+**Application Android** : [`mobile/README.md`](mobile/README.md) — un fichier `.apk` qui ouvre le site ZE LOYER hébergé sur votre serveur (même code, mêmes comptes), construit automatiquement par GitHub (Actions → « ZE LOYER Android »).
+
 ## Démarrage local
 
 Prérequis : Node.js 22 et PostgreSQL 16 (ou Docker).
@@ -83,4 +85,4 @@ Mots de passe argon2id · sessions aléatoires stockées hachées, cookie `httpO
 
 ## Hors périmètre V1
 
-Marketplace, annonces, IA, scoring, assurance, comptabilité complète, maintenance avancée, intégrations bancaires ou Mobile Money réelles, applications natives.
+Marketplace, annonces, IA, scoring, assurance, comptabilité complète, maintenance avancée, intégrations bancaires ou Mobile Money réelles, application iOS.

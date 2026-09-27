@@ -1,0 +1,16 @@
+node_modules
+# Généré par scripts/configure.mjs
+www/config.json
+# Fichiers de construction Android
+android/app/build
+android/build
+android/.gradle
+android/local.properties
+android/app/src/main/assets/public
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor-cordova-android-plugins
+# Clé de signature : ne JAMAIS la mettre dans le dépôt
+*.jks
+*.keystore
+keystore.properties

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ZE LOYER</string>
+    <string name="title_activity_main">ZE LOYER</string>
+    <string name="package_name">com.zegroup.zeloyer</string>
+    <string name="custom_url_scheme">com.zegroup.zeloyer</string>
+</resources>

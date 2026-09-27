@@ -1,0 +1,76 @@
+name: ZE LOYER Android
+
+# Construit l'application Android ZE LOYER (fichier .apk à installer ou à partager).
+# Adresse du serveur : variable du dépôt ZE_LOYER_URL (Settings → Secrets and variables → Actions → Variables),
+# ou saisie au lancement manuel (onglet Actions → « ZE LOYER Android » → Run workflow).
+# Signature : secrets ZE_KEYSTORE_BASE64, ZE_KEYSTORE_PASSWORD, ZE_KEY_ALIAS, ZE_KEY_PASSWORD (voir ze-loyer/mobile/README.md).
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: "Adresse HTTPS du site ZE LOYER (vide = variable ZE_LOYER_URL du dépôt)"
+        required: false
+  pull_request:
+    paths: ["ze-loyer/mobile/**", ".github/workflows/ze-loyer-android.yml"]
+  push:
+    branches: [main]
+    paths: ["ze-loyer/mobile/**", ".github/workflows/ze-loyer-android.yml"]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ze-loyer/mobile
+    env:
+      ZE_LOYER_URL: ${{ inputs.server_url || vars.ZE_LOYER_URL }}
+      ZE_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ze-loyer/mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - name: Configurer l'adresse du serveur et synchroniser le projet Android
+        run: npm run sync
+      - name: Clé de signature (si les secrets sont définis)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ZE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/zeloyer.jks"
+            echo "ZE_KEYSTORE_FILE=$RUNNER_TEMP/zeloyer.jks" >> "$GITHUB_ENV"
+            echo "APK_KIND=release" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Pas de clé de signature (secret ZE_KEYSTORE_BASE64) : APK de test signé avec une clé temporaire. Les mises à jour demanderont de désinstaller l'ancienne version."
+            echo "APK_KIND=debug" >> "$GITHUB_ENV"
+          fi
+      - name: Construire l'APK
+        working-directory: ze-loyer/mobile/android
+        env:
+          ZE_KEYSTORE_PASSWORD: ${{ secrets.ZE_KEYSTORE_PASSWORD }}
+          ZE_KEY_ALIAS: ${{ secrets.ZE_KEY_ALIAS }}
+          ZE_KEY_PASSWORD: ${{ secrets.ZE_KEY_PASSWORD }}
+        run: |
+          if [ "$APK_KIND" = release ]; then ./gradlew assembleRelease --no-daemon; else ./gradlew assembleDebug --no-daemon; fi
+          mkdir -p ../dist
+          cp app/build/outputs/apk/$APK_KIND/app-$APK_KIND.apk "../dist/ZE-LOYER-1.0.${ZE_BUILD_NUMBER}.apk"
+      - name: Vérifier l'APK (adresse du serveur intégrée, signature)
+        run: |
+          APK=$(ls dist/*.apk)
+          unzip -p "$APK" assets/capacitor.config.json | grep -q '"appId": "com.zegroup.zeloyer"'
+          if [ -n "$ZE_LOYER_URL" ]; then unzip -p "$APK" assets/capacitor.config.json | grep -q "\"url\": \"${ZE_LOYER_URL%/}/connexion\""; fi
+          "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner" verify --print-certs "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZE-LOYER-Android
+          path: ze-loyer/mobile/dist/*.apk
+          retention-days: 30
