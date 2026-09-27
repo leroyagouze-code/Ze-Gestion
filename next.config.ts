@@ -11,6 +11,10 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["@node-rs/argon2", "@react-pdf/renderer"],
+  // Polices standard de pdfkit chargées dynamiquement : à inclure dans le build standalone
+  outputFileTracingIncludes: {
+    "/api/**/*": ["./node_modules/pdfkit/js/standard-fonts/**", "./node_modules/pdfkit/js/data/**"],
+  },
   experimental: { serverActions: { bodySizeLimit: "3mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

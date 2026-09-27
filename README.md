@@ -50,4 +50,9 @@ Chaque table métier porte `company_id` et une policy PostgreSQL Row Level Secur
 
 ## Production
 
-`docker build -t ze-gestion .` produit une image autonome. Variables : `DATABASE_URL`, `DATABASE_ADMIN_URL` (migrations), `APP_DB_PASSWORD`, `APP_URL`, `UPLOAD_DIR` (ou stockage S3 à brancher dans `src/lib/storage.ts`). Placer l'application derrière un proxy HTTPS (Caddy, Traefik) et activer les sauvegardes automatiques de la base.
+Guide pas à pas (serveur, domaine, HTTPS, sauvegardes, mises à jour) : [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md). En résumé :
+
+```bash
+cp deploy/.env.example deploy/.env   # domaine et mots de passe
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+```
