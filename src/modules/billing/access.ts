@@ -88,3 +88,8 @@ const READ_ONLY_ALLOWED = new Set<Permission>([
 export function readOnlyPermissions(perms: string[]) {
   return perms.filter((p) => READ_ONLY_ALLOWED.has(p as Permission));
 }
+
+/** Mention « Édité avec ZE Gestion » sur les documents : seulement pendant l'essai (ou sans accès actif). */
+export function showAppCredit(state: SubscriptionState) {
+  return !(state.unlimited || (state.status === "active" && !state.readOnly));
+}

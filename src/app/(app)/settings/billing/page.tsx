@@ -1,10 +1,10 @@
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Badge, Card, Field, PageHeader, SelectField } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
-import { formatQty } from "@/lib/money";
+import { formatQty, TAX_MODES, type TaxMode } from "@/lib/money";
 import { formatNumber } from "@/modules/settings/sequences";
 import { getSettings } from "@/modules/settings/service";
-import { addPaymentMethodAction, saveTaxAction, togglePaymentMethodAction, updateSequenceAction } from "../actions";
+import { addPaymentMethodAction, saveTaxAction, setTaxModeAction, togglePaymentMethodAction, updateSequenceAction } from "../actions";
 import { SettingsTabs } from "../tabs";
 
 export const metadata = { title: "Paramètres" };
@@ -21,6 +21,25 @@ export default async function BillingSettingsPage() {
       <PageHeader title="Paramètres" />
       <SettingsTabs current="billing" />
       <div className="grid gap-4 xl:grid-cols-2">
+        <Card title="Calcul de la TVA" className="xl:col-span-2">
+          <ActionForm action={setTaxModeAction} className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(Object.entries(TAX_MODES) as [TaxMode, (typeof TAX_MODES)[TaxMode]][]).map(([value, mode]) => (
+                <label key={value} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50 has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50">
+                  <input type="radio" name="taxMode" value={value} defaultChecked={ctx.company.taxMode === value} className="mt-1 accent-brand-700" />
+                  <span>
+                    <span className="block text-sm font-medium">{mode.label}</span>
+                    <span className="block text-xs text-slate-500">{mode.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              Le changement s&apos;applique aux nouvelles ventes et factures. Pensez à revoir vos prix de vente : ils seront lus comme {ctx.company.taxMode === "total" ? "TTC" : "HT"} si vous changez de mode.
+            </p>
+            <SubmitButton className="btn-primary">Enregistrer</SubmitButton>
+          </ActionForm>
+        </Card>
         <Card title="Taxes">
           <div className="space-y-3">
             {s.taxes.map((t) => (

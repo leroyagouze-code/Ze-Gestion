@@ -5,6 +5,9 @@ import { companies, documentSequences, paymentMethods, stores, taxes } from "@/d
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
+import { isTimeZone } from "@/lib/countries";
+import { isTaxMode } from "@/lib/money";
+import { MODULE_KEYS, isModuleKey } from "@/lib/modules";
 import { TRADE_KEYS, type TradeKey } from "@/lib/trades";
 import { optText } from "@/lib/zod";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
@@ -20,6 +23,7 @@ export const companySchema = z.object({
   city: optText(100),
   country: z.string().trim().length(2),
   currency: z.string().trim().length(3),
+  timezone: z.string().trim().min(1).max(60).refine(isTimeZone, "Fuseau horaire inconnu").optional(),
   taxId: optText(100),
   billingAddress: optText(300),
   extraInfo: optText(1000),
@@ -43,6 +47,29 @@ export async function updateCompany(ctx: AppContext, raw: z.input<typeof company
   await withTenant(ctx, (tx) =>
     audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "company.updated", entityType: "company", entityId: ctx.companyId, ip: ctx.ip }),
   );
+}
+
+/** Mode de TVA : s'applique aux nouvelles ventes et factures ; les documents déjà émis gardent le leur. */
+export async function setTaxMode(ctx: AppContext, mode: unknown) {
+  ctxAssert(ctx, "settings.manage");
+  if (!isTaxMode(mode)) throw new BusinessError("Mode de TVA inconnu");
+  await db.update(companies).set({ taxMode: mode, updatedAt: new Date() }).where(eq(companies.id, ctx.companyId));
+  await withTenant(ctx, (tx) =>
+    audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "company.tax_mode", metadata: { mode }, ip: ctx.ip }),
+  );
+}
+
+/** Modules affichés dans le menu : on reçoit la liste des modules cochés, on enregistre ceux à masquer. */
+export async function setVisibleModules(ctx: AppContext, visible: unknown[]) {
+  ctxAssert(ctx, "settings.manage");
+  const shown = new Set(visible.filter(isModuleKey));
+  const hidden = MODULE_KEYS.filter((k) => !shown.has(k));
+  if (hidden.length === MODULE_KEYS.length) throw new BusinessError("Gardez au moins un module affiché");
+  await db.update(companies).set({ hiddenModules: hidden, updatedAt: new Date() }).where(eq(companies.id, ctx.companyId));
+  await withTenant(ctx, (tx) =>
+    audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "company.modules", metadata: { hidden }, ip: ctx.ip }),
+  );
+  return hidden;
 }
 
 export async function getSettings(ctx: AppContext) {

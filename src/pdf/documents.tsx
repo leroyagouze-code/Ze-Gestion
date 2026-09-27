@@ -1,11 +1,11 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import type { companies, invoiceItems, invoices, saleItems, sales } from "@/db/schema";
 import { formatDate } from "@/lib/dates";
-import { formatMoney, formatQty } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { APP_NAME, APP_PUBLISHER } from "@/lib/brand";
-import { readStoredFile } from "@/lib/storage";
+import { isLightTransparentLogo, readStoredFile } from "@/lib/storage";
 
 type Company = typeof companies.$inferSelect;
 
@@ -16,10 +16,34 @@ function brandLogo() {
   return brandTile;
 }
 
-async function logoSrc(company: Company) {
-  if (!company.logoUrl) return null;
-  const f = await readStoredFile(company.logoUrl);
-  if (!f || f.type === "application/pdf" || f.type === "image/webp") return null; // react-pdf : PNG/JPEG
+const logoCache = new Map<string, Promise<{ data: Buffer; format: "png" | "jpg" } | null>>();
+
+/**
+ * Logo de l'entreprise pour les PDF (PNG/JPEG). Les anciens logos WebP sont convertis, et un logo
+ * clair sur fond transparent est posé sur une pastille de la couleur de l'entreprise pour rester visible.
+ */
+function logoSrc(company: Company) {
+  if (!company.logoUrl) return Promise.resolve(null);
+  const key = `${company.logoUrl}|${company.brandColor}`;
+  if (!logoCache.has(key)) logoCache.set(key, loadLogo(company.logoUrl, company.brandColor).catch(() => null));
+  return logoCache.get(key)!;
+}
+
+async function loadLogo(url: string, brandColor: string) {
+  const f = await readStoredFile(url);
+  if (!f || f.type === "application/pdf") return null;
+  const { default: sharp } = await import("sharp");
+  if (await isLightTransparentLogo(f.data)) {
+    const img = sharp(f.data).resize(600, 300, { fit: "inside", withoutEnlargement: true });
+    const { width = 600, height = 300 } = await img.metadata().then(async () => (await img.clone().png().toBuffer({ resolveWithObject: true })).info);
+    const pad = Math.round(Math.max(width, height) * 0.12);
+    const data = await sharp({ create: { width: width + pad * 2, height: height + pad * 2, channels: 4, background: brandColor } })
+      .composite([{ input: await img.png().toBuffer(), top: pad, left: pad }])
+      .png()
+      .toBuffer();
+    return { data, format: "png" as const };
+  }
+  if (f.type === "image/webp") return { data: await sharp(f.data).png().toBuffer(), format: "png" as const };
   return { data: f.data, format: f.type === "image/png" ? ("png" as const) : ("jpg" as const) };
 }
 
@@ -38,7 +62,11 @@ const s = StyleSheet.create({
 
 const cols = { desc: "42%", qty: "10%", pu: "16%", disc: "10%", tax: "8%", total: "14%" };
 
-export async function invoicePdf(company: Company, invoice: typeof invoices.$inferSelect, items: (typeof invoiceItems.$inferSelect)[]) {
+/** credit : mention « Édité avec ZE Gestion », retirée pour les abonnés (essai et compte gratuit seulement). */
+export type PdfOptions = { credit?: boolean };
+
+export async function invoicePdf(company: Company, invoice: typeof invoices.$inferSelect, items: (typeof invoiceItems.$inferSelect)[], opts: PdfOptions = {}) {
+  const credit = opts.credit ?? true;
   const [logo, brand] = await Promise.all([logoSrc(company), brandLogo()]);
   const m = (v: number) => formatMoney(v, company.currency);
   const c = invoice.customerSnapshot;
@@ -79,10 +107,10 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
           <View style={[s.row, { backgroundColor: color }]}>
             <Text style={[s.th, { width: cols.desc }]}>Désignation</Text>
             <Text style={[s.th, { width: cols.qty, textAlign: "right" }]}>Qté</Text>
-            <Text style={[s.th, { width: cols.pu, textAlign: "right" }]}>P.U. TTC</Text>
+            <Text style={[s.th, { width: cols.pu, textAlign: "right" }]}>P.U. {priceBasis(invoice.taxMode)}</Text>
             <Text style={[s.th, { width: cols.disc, textAlign: "right" }]}>Remise</Text>
             <Text style={[s.th, { width: cols.tax, textAlign: "right" }]}>TVA</Text>
-            <Text style={[s.th, { width: cols.total, textAlign: "right" }]}>Total TTC</Text>
+            <Text style={[s.th, { width: cols.total, textAlign: "right" }]}>Total {priceBasis(invoice.taxMode)}</Text>
           </View>
           {items.map((it) => (
             <View key={it.id} style={s.row} wrap={false}>
@@ -91,7 +119,7 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
               <Text style={[s.td, { width: cols.pu, textAlign: "right" }]}>{m(it.unitPrice)}</Text>
               <Text style={[s.td, { width: cols.disc, textAlign: "right" }]}>{it.discount ? m(it.discount) : "—"}</Text>
               <Text style={[s.td, { width: cols.tax, textAlign: "right" }]}>{formatQty(it.taxRate)} %</Text>
-              <Text style={[s.td, { width: cols.total, textAlign: "right" }]}>{m(it.lineTotal)}</Text>
+              <Text style={[s.td, { width: cols.total, textAlign: "right" }]}>{m(shownLineTotal(it, invoice.taxMode))}</Text>
             </View>
           ))}
         </View>
@@ -120,10 +148,12 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
         <Text style={s.footer} fixed>
           {company.invoiceFooter || [company.name, company.address, company.phone, company.taxId && `N° fiscal ${company.taxId}`].filter(Boolean).join(" · ")}
         </Text>
-        <View style={s.brand} fixed>
-          {brand && <Image src={{ data: brand, format: "png" }} style={{ width: 8, height: 8, marginRight: 3 }} />}
-          <Text>Édité avec {APP_NAME} · {APP_PUBLISHER}</Text>
-        </View>
+        {credit && (
+          <View style={s.brand} fixed>
+            {brand && <Image src={{ data: brand, format: "png" }} style={{ width: 8, height: 8, marginRight: 3 }} />}
+            <Text>Édité avec {APP_NAME} · {APP_PUBLISHER}</Text>
+          </View>
+        )}
       </Page>
     </Document>
   );
@@ -137,7 +167,9 @@ export async function receiptPdf(
   items: (typeof saleItems.$inferSelect)[],
   pays: { method: string | null; amount: number }[],
   extra: { cashier?: string | null; customer?: string | null },
+  opts: PdfOptions = {},
 ) {
+  const credit = opts.credit ?? true;
   const logo = await logoSrc(company);
   const m = (v: number) => formatMoney(v, company.currency);
   const width = company.receiptFormat === "58mm" ? 164 : 226; // points (1 mm ≈ 2.83 pt)
@@ -163,7 +195,7 @@ export async function receiptPdf(
             <Text>{it.name}</Text>
             <View style={s.between}>
               <Text>{formatQty(it.quantity)} × {m(it.unitPrice)}{it.discount ? ` − ${m(it.discount)}` : ""}</Text>
-              <Text>{m(it.lineTotal)}</Text>
+              <Text>{m(shownLineTotal(it, sale.taxMode))}</Text>
             </View>
           </View>
         ))}
@@ -178,7 +210,7 @@ export async function receiptPdf(
         {sale.dueAmount > 0 && <View style={s.between}><Text style={s.bold}>Reste dû</Text><Text style={s.bold}>{m(sale.dueAmount)}</Text></View>}
         <View style={t.line} />
         <Text style={t.c}>{company.invoiceFooter || "Merci pour votre achat !"}</Text>
-        <Text style={[t.c, { fontSize: 6, marginTop: 4, color: "#555" }]}>Logiciel {APP_NAME} · {APP_PUBLISHER}</Text>
+        {credit && <Text style={[t.c, { fontSize: 6, marginTop: 4, color: "#555" }]}>Logiciel {APP_NAME} · {APP_PUBLISHER}</Text>}
       </Page>
     </Document>
   );

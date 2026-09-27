@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { formatDate } from "@/lib/dates";
-import { formatMoney, formatQty } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
 import { INVOICE_STATUS } from "@/modules/invoices/labels";
 import { getPublicInvoice } from "@/modules/invoices/service";
 
@@ -41,11 +41,11 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
           <div className="mt-6 overflow-x-auto">
             <table className="table">
               <thead>
-                <tr><th>Désignation</th><th className="text-right">Qté</th><th className="text-right">P.U.</th><th className="text-right">Total</th></tr>
+                <tr><th>Désignation</th><th className="text-right">Qté</th><th className="text-right">P.U. {priceBasis(inv.taxMode)}</th><th className="text-right">Total {priceBasis(inv.taxMode)}</th></tr>
               </thead>
               <tbody>
                 {items.map((it) => (
-                  <tr key={it.id}><td>{it.description}</td><td className="text-right">{formatQty(it.quantity)}</td><td className="text-right">{m(it.unitPrice)}</td><td className="text-right">{m(it.lineTotal)}</td></tr>
+                  <tr key={it.id}><td>{it.description}</td><td className="text-right">{formatQty(it.quantity)}</td><td className="text-right">{m(it.unitPrice)}</td><td className="text-right">{m(shownLineTotal(it, inv.taxMode))}</td></tr>
                 ))}
               </tbody>
             </table>

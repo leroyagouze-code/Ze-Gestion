@@ -53,6 +53,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             <Card title={`Fiche ${trade.item.one}`}>
               {p.imageUrl && <img src={p.imageUrl} alt="" className="mb-4 h-28 w-28 rounded-lg object-cover ring-1 ring-slate-200" />}
               <ProductForm
+                taxMode={ctx.company.taxMode}
                 action={updateProductAction.bind(null, id)}
                 options={options}
                 product={p}

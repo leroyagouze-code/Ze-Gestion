@@ -6,6 +6,9 @@
   "author": "ZE GROUP",
   "private": true,
   "main": "main.cjs",
+  "zeGestion": {
+    "serverUrl": ""
+  },
   "scripts": {
     "prepare-app": "node build/prepare.mjs",
     "start": "electron .",

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/action-form";
-import { Field, SelectField, TextArea } from "@/components/ui";
-import { COUNTRIES, CURRENCIES } from "@/lib/locale";
+import { Field, TextArea } from "@/components/ui";
+import { CountryFields } from "@/components/country-fields";
+import { COUNTRIES, COUNTRY_INFO, CURRENCIES } from "@/lib/locale";
 import { TRADES } from "@/lib/trades";
 import { signupAction } from "../actions";
 
@@ -36,8 +37,8 @@ export default function SignupPage() {
         <Field label="Mot de passe" name="password" type="password" autoComplete="new-password" minLength={8} required hint="8 caractères minimum" className="sm:col-span-2" />
         <Field label="Adresse" name="address" />
         <Field label="Ville" name="city" />
-        <SelectField label="Pays" name="country" defaultValue="TG" options={COUNTRIES} />
-        <SelectField label="Devise" name="currency" defaultValue="XOF" options={CURRENCIES} />
+        <CountryFields countries={COUNTRIES} currencies={CURRENCIES} countryInfo={COUNTRY_INFO} defaults={{ country: "TG", currency: "XOF", timezone: "Africa/Lome" }} />
+        <p className="-mt-2 text-xs text-slate-500 sm:col-span-2">Votre pays règle la devise, l&apos;heure et la TVA de départ. Tout reste modifiable dans les paramètres.</p>
         <Field label="N° d'identification fiscale" name="taxId" hint="Si applicable" />
         <Field label="Adresse de facturation" name="billingAddress" />
         <TextArea label="Informations complémentaires" name="extraInfo" className="sm:col-span-2" />

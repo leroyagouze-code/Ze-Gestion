@@ -80,6 +80,10 @@ export const companies = pgTable("companies", {
   timezone: text("timezone").notNull().default("Africa/Lome"),
   /** Métier du client (voir src/lib/trades.ts) : adapte les mots, les fiches et les menus. */
   businessType: text("business_type").notNull().default("general"),
+  /** TVA ligne par ligne (prix TTC) ou sur le total HT (prix HT) : voir TaxMode dans src/lib/money.ts. */
+  taxMode: text("tax_mode").notNull().default("line"),
+  /** Modules masqués du menu (voir src/lib/modules.ts). Vide = tout est affiché. */
+  hiddenModules: text("hidden_modules").array().notNull().default(sql`'{}'::text[]`),
   status: companyStatus("status").notNull().default("active"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -114,6 +118,27 @@ export const licenseIssues = pgTable("license_issues", {
   code: text("code").notNull(),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: createdAt(),
+});
+
+/**
+ * Installations signalées par le logiciel Windows et les postes en ligne (hors données des clients) :
+ * table de la plateforme, lue seulement par le super admin.
+ */
+export const appInstalls = pgTable("app_installs", {
+  id: id(),
+  installId: text("install_id").notNull().unique(),
+  edition: text("edition").notNull(), // "desktop" | "web"
+  version: text("version"),
+  os: text("os"),
+  locale: text("locale"),
+  timezone: text("timezone"),
+  country: text("country"),
+  companyName: text("company_name"),
+  businessType: text("business_type"),
+  licensed: boolean("licensed").notNull().default(false),
+  pings: integer("pings").notNull().default(1),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const subscriptionPayments = pgTable(
@@ -464,6 +489,8 @@ export const sales = pgTable(
     discountTotal: money("discount_total").notNull().default(0),
     taxTotal: money("tax_total").notNull().default(0),
     total: money("total").notNull(), // TTC
+    /** Mode de TVA au moment de la vente : "line" = prix unitaires TTC, "total" = prix unitaires HT. */
+    taxMode: text("tax_mode").notNull().default("line"),
     costTotal: money("cost_total").notNull().default(0),
     paidAmount: money("paid_amount").notNull().default(0),
     dueAmount: money("due_amount").notNull().default(0),
@@ -531,6 +558,8 @@ export const invoices = pgTable(
     discountTotal: money("discount_total").notNull().default(0),
     taxTotal: money("tax_total").notNull().default(0),
     total: money("total").notNull(),
+    /** Mode de TVA au moment de la facture : "line" = prix unitaires TTC, "total" = prix unitaires HT. */
+    taxMode: text("tax_mode").notNull().default("line"),
     paidAmount: money("paid_amount").notNull().default(0),
     paymentMethodLabel: text("payment_method_label"),
     paymentTerms: text("payment_terms"),

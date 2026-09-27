@@ -20,6 +20,7 @@ export const signupSchema = z.object({
   city: optional,
   country: z.string().trim().length(2).default("TG"),
   currency: z.string().trim().length(3).default("XOF"),
+  timezone: z.string().trim().max(60).optional(),
   taxId: optional,
   billingAddress: optional,
   extraInfo: optional,

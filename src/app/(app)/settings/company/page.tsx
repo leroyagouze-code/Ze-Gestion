@@ -2,7 +2,8 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Card, Field, PageHeader, SelectField, TextArea } from "@/components/ui";
 import { TRADES } from "@/lib/trades";
 import { requireContext } from "@/lib/auth/server";
-import { COUNTRIES, CURRENCIES } from "@/lib/locale";
+import { CountryFields } from "@/components/country-fields";
+import { COUNTRIES, COUNTRY_INFO, CURRENCIES, TIMEZONES } from "@/lib/locale";
 import { updateCompanyAction } from "../actions";
 import { SettingsTabs } from "../tabs";
 
@@ -27,8 +28,8 @@ export default async function CompanySettingsPage({ searchParams }: { searchPara
             <div className="flex items-center gap-4 sm:col-span-2 lg:col-span-3">
               {c.logoUrl ? <img src={c.logoUrl} alt="Logo" className="h-16 w-16 rounded-lg object-contain ring-1 ring-slate-200" /> : <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">Logo</div>}
               <div>
-                <label className="label" htmlFor="logo">Logo (PNG ou JPEG, 2 Mo max)</label>
-                <input id="logo" name="logo" type="file" accept="image/png,image/jpeg" className="input" />
+                <label className="label" htmlFor="logo">Logo (PNG, JPEG ou WebP, 10 Mo max)</label>
+                <input id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp" className="input" />
               </div>
             </div>
             <Field label="Nom de l'entreprise" name="name" defaultValue={c.name} required />
@@ -49,8 +50,13 @@ export default async function CompanySettingsPage({ searchParams }: { searchPara
               options={Object.entries(TRADES).map(([value, t]) => ({ value, label: t.label }))}
               className="sm:col-span-2"
             />
-            <SelectField label="Pays" name="country" defaultValue={c.country} options={COUNTRIES} />
-            <SelectField label="Devise" name="currency" defaultValue={c.currency} options={CURRENCIES} />
+            <CountryFields
+              countries={COUNTRIES}
+              currencies={CURRENCIES}
+              timezones={TIMEZONES}
+              countryInfo={COUNTRY_INFO}
+              defaults={{ country: c.country, currency: c.currency, timezone: c.timezone }}
+            />
             <Field label="N° d'identification fiscale" name="taxId" defaultValue={c.taxId ?? ""} />
             <Field label="Adresse de facturation" name="billingAddress" defaultValue={c.billingAddress ?? ""} />
             <TextArea label="Informations complémentaires" name="extraInfo" defaultValue={c.extraInfo ?? ""} className="sm:col-span-2 lg:col-span-3" />

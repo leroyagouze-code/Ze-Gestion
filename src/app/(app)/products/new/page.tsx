@@ -17,7 +17,7 @@ export default async function NewProductPage({ searchParams }: { searchParams: P
       <PageHeader title={trade.item.new} />
       {created && <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Enregistré. Vous pouvez en ajouter un autre.</p>}
       <div className="card p-4 sm:p-6">
-        <ProductForm action={createProductAction} options={options} canCost={can(ctx.permissions, "products.cost")} isNew trade={trade} />
+        <ProductForm action={createProductAction} options={options} canCost={can(ctx.permissions, "products.cost")} isNew trade={trade} taxMode={ctx.company.taxMode} />
       </div>
     </>
   );

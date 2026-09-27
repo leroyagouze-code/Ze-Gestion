@@ -5,7 +5,7 @@ import { Badge, Card, Field, PageHeader } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { NotFoundError } from "@/lib/errors";
-import { formatMoney, formatQty } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { getSale } from "@/modules/sales/service";
 import { cancelSaleAction, invoiceFromSaleAction } from "../actions";
@@ -49,9 +49,9 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
               <tr>
                 <th>Produit</th>
                 <th className="text-right">Qté</th>
-                <th className="text-right">P.U.</th>
+                <th className="text-right">P.U. {priceBasis(s.taxMode)}</th>
                 <th className="text-right">Remise</th>
-                <th className="text-right">Total</th>
+                <th className="text-right">Total {priceBasis(s.taxMode)}</th>
               </tr>
             </thead>
             <tbody>
@@ -61,7 +61,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
                   <td className="text-right">{formatQty(it.quantity)}</td>
                   <td className="text-right">{m(it.unitPrice)}</td>
                   <td className="text-right">{it.discount ? m(it.discount) : "—"}</td>
-                  <td className="text-right">{m(it.lineTotal)}</td>
+                  <td className="text-right">{m(shownLineTotal(it, s.taxMode))}</td>
                 </tr>
               ))}
             </tbody>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
 import { Camera, Minus, Plus, ScanLine, Trash2, X } from "lucide-react";
-import { computeTotals, formatMoney, formatQty } from "@/lib/money";
+import { computeTotals, formatMoney, formatQty, type TaxMode } from "@/lib/money";
 import { createSaleAction } from "./actions";
 
 type Product = {
@@ -29,6 +29,7 @@ const price = (p: Product) => (p.promoPrice != null && p.promoPrice > 0 ? p.prom
 export function Pos({
   currency,
   decimals,
+  taxMode = "line",
   paymentMethods,
   customers,
   canDiscount,
@@ -36,6 +37,7 @@ export function Pos({
 }: {
   currency: string;
   decimals: number;
+  taxMode?: TaxMode;
   paymentMethods: Method[];
   customers: { id: string; name: string; phone: string | null }[];
   canDiscount: boolean;
@@ -93,8 +95,9 @@ export function Pos({
         cart.map((l) => ({ quantity: l.quantity, unitPrice: price(l.product), discount: l.discount, taxRate: l.product.taxRate })),
         Number(discount.replace(",", ".")) || 0,
         decimals,
+        taxMode,
       ),
-    [cart, discount, decimals],
+    [cart, discount, decimals, taxMode],
   );
 
   const tendered = pays.reduce((s, p) => s + (Number(p.amount.replace(/\s/g, "").replace(",", ".")) || 0), 0);

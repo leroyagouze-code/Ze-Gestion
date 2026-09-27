@@ -5,7 +5,7 @@ import { Badge, Card, Field, PageHeader, SelectField, TableWrap, TextArea } from
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { NotFoundError } from "@/lib/errors";
-import { formatMoney, formatQty } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { attributeSummary, getTrade } from "@/lib/trades";
 import { getRepairOrder, partOptions, REPAIR_STATUS } from "@/modules/repairs/service";
@@ -75,7 +75,7 @@ export default async function RepairPage({ params }: { params: Promise<{ id: str
                   <tfoot>
                     <tr><td colSpan={3} className="text-right text-slate-500">Pièces</td><td className="text-right">{m(totals.parts)}</td>{editable && <td />}</tr>
                     <tr><td colSpan={3} className="text-right text-slate-500">Main-d&apos;œuvre</td><td className="text-right">{m(totals.labor)}</td>{editable && <td />}</tr>
-                    <tr><td colSpan={3} className="text-right font-semibold">Total TTC</td><td className="text-right font-semibold">{m(totals.total)}</td>{editable && <td />}</tr>
+                    <tr><td colSpan={3} className="text-right font-semibold">Total {priceBasis(ctx.company.taxMode)}</td><td className="text-right font-semibold">{m(totals.total)}</td>{editable && <td />}</tr>
                   </tfoot>
                 </table>
               </TableWrap>

@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
-import { localDate } from "@/lib/dates";
+import { localDate, requestTimeZone, zonedDay, zonedMidnight } from "@/lib/dates";
 import { customers, expenses, products, saleItems, sales, stockLevels, suppliers } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
@@ -17,19 +17,17 @@ export const PERIOD_LABELS: Record<PeriodKey, string> = {
   custom: "Période personnalisée",
 };
 
-/** Bornes [from, to[ en heure locale du serveur. */
-export function periodRange(key: PeriodKey, custom?: { from?: string; to?: string }, now = new Date()) {
-  const d = (y: number, m: number, day: number) => new Date(y, m, day);
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const day = now.getDate();
+/** Bornes [from, to[ en heure locale de l'entreprise (fuseau tz). */
+export function periodRange(key: PeriodKey, custom?: { from?: string; to?: string }, now = new Date(), tz: string | undefined = requestTimeZone()) {
+  const d = (y: number, m: number, day: number) => zonedMidnight(y, m, day, tz);
+  const { y, m, d: day, dow } = zonedDay(now, tz);
+  const ymd = (s: string) => s.split("-").map(Number) as [number, number, number];
   switch (key) {
     case "today":
       return { from: d(y, m, day), to: d(y, m, day + 1) };
     case "yesterday":
       return { from: d(y, m, day - 1), to: d(y, m, day) };
     case "week": {
-      const dow = (now.getDay() + 6) % 7; // lundi = 0
       return { from: d(y, m, day - dow), to: d(y, m, day + 1) };
     }
     case "month":
@@ -39,8 +37,9 @@ export function periodRange(key: PeriodKey, custom?: { from?: string; to?: strin
     case "year":
       return { from: d(y, 0, 1), to: d(y + 1, 0, 1) };
     case "custom": {
-      const from = custom?.from ? new Date(custom.from + "T00:00:00") : d(y, m, 1);
-      const to = custom?.to ? new Date(new Date(custom.to + "T00:00:00").getTime() + 86400_000) : d(y, m, day + 1);
+      const valid = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+      const from = valid(custom?.from) ? (([a, b, c]) => d(a, b - 1, c))(ymd(custom!.from!)) : d(y, m, 1);
+      const to = valid(custom?.to) ? (([a, b, c]) => d(a, b - 1, c + 1))(ymd(custom!.to!)) : d(y, m, day + 1);
       return { from, to };
     }
   }

@@ -20,9 +20,11 @@ export function ProductForm({
   canCost,
   isNew,
   trade,
+  taxMode = "line",
 }: {
   action: (s: ActionState, fd: FormData) => Promise<ActionState>;
   options: Options;
+  taxMode?: string;
   product?: typeof products.$inferSelect;
   categoryName?: string | null;
   brandName?: string | null;
@@ -75,7 +77,7 @@ export function ProductForm({
       )}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {canCost && <Field label="Prix d'achat" name="purchasePrice" inputMode="decimal" defaultValue={p?.purchasePrice ?? ""} />}
-        <Field label="Prix de vente (TTC)" name="salePrice" inputMode="decimal" required defaultValue={p?.salePrice ?? ""} />
+        <Field label={taxMode === "total" ? "Prix de vente (HT)" : "Prix de vente (TTC)"} name="salePrice" inputMode="decimal" required defaultValue={p?.salePrice ?? ""} />
         <Field label="Prix promotionnel" name="promoPrice" inputMode="decimal" defaultValue={p?.promoPrice ?? ""} />
         <SelectField
           label="Taxe"

@@ -1,5 +1,5 @@
 import { requireContext } from "@/lib/auth/server";
-import { currencyDecimals } from "@/lib/money";
+import { currencyDecimals, isTaxMode } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { posBootstrap } from "@/modules/sales/service";
 import { Pos } from "./pos";
@@ -14,6 +14,7 @@ export default async function PosPage() {
     <Pos
       currency={ctx.company.currency}
       decimals={currencyDecimals(ctx.company.currency)}
+      taxMode={isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line"}
       paymentMethods={canCredit ? data.paymentMethods : data.paymentMethods.filter((pm) => pm.type !== "credit")}
       customers={data.customers}
       canDiscount={can(ctx.permissions, "sales.discount")}
