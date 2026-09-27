@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Badge, EmptyState, PageHeader, Pagination, SearchBar, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatMoney } from "@/lib/money";
-import { can } from "@/lib/permissions";
+import { can, canAny } from "@/lib/permissions";
 import { listCustomers } from "@/modules/customers/service";
 
 export const metadata = { title: "Clients" };
@@ -19,8 +19,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         actions={
           <>
             <Link href={sp.debt === "1" ? "/customers" : "?debt=1"} className="btn-secondary">{sp.debt === "1" ? "Tous les clients" : "Clients avec dette"}</Link>
-            <a href="/api/export/customers" className="btn-secondary">Exporter CSV</a>
-            {can(ctx.permissions, "customers.edit") && <Link href="/customers/new" className="btn-primary">Nouveau client</Link>}
+            {can(ctx.permissions, "data.export") && <a href="/api/export/customers" className="btn-secondary">Exporter CSV</a>}
+            {canAny(ctx.permissions, "customers.create", "customers.edit") && <Link href="/customers/new" className="btn-primary">Nouveau client</Link>}
           </>
         }
       />

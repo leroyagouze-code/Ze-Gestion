@@ -20,7 +20,7 @@ export async function signupAction(_: ActionState, fd: FormData): Promise<Action
 }
 
 export async function loginAction(_: ActionState, fd: FormData): Promise<ActionState> {
-  let target = "/dashboard";
+  let target = "/";
   try {
     const res = await login({ email: String(fd.get("email") ?? ""), password: String(fd.get("password") ?? "") }, await requestMeta());
     await setSessionCookie(res.session.token, res.session.expiresAt);

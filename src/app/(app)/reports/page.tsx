@@ -1,6 +1,7 @@
 import { parsePeriod, PeriodFilter } from "@/components/period-filter";
 import { Card, PageHeader, Stat, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
+import { can } from "@/lib/permissions";
 import { formatDate } from "@/lib/dates";
 import { formatMoney, formatQty } from "@/lib/money";
 import { periodRange, PERIOD_LABELS } from "@/modules/dashboard/service";
@@ -25,9 +26,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         subtitle={PERIOD_LABELS[period]}
         actions={
           <>
-            <a href={`/api/export/sales?${qs}`} className="btn-secondary">Ventes CSV</a>
-            <a href="/api/export/stock" className="btn-secondary">Stock CSV</a>
-            <a href="/api/export/customers" className="btn-secondary">Clients CSV</a>
+            {can(ctx.permissions, "data.export") && (
+              <>
+                <a href={`/api/export/sales?${qs}`} className="btn-secondary">Ventes CSV</a>
+                <a href="/api/export/stock" className="btn-secondary">Stock CSV</a>
+                <a href="/api/export/customers" className="btn-secondary">Clients CSV</a>
+              </>
+            )}
             <PrintButton />
           </>
         }

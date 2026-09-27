@@ -49,6 +49,9 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
   ctxAssert(ctx, "sales.create");
   const input = saleSchema.parse(raw);
   const decimals = currencyDecimals(ctx.company.currency);
+  if ((input.discount > 0 || input.items.some((i) => i.discount > 0)) && !ctxCan(ctx, "sales.discount")) {
+    throw new BusinessError("Vous n'êtes pas autorisé à accorder des remises");
+  }
 
   return withTenant(ctx, async (tx) => {
     const ids = [...new Set(input.items.map((i) => i.productId))];
@@ -87,6 +90,7 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
     const paid = Math.min(tenderedSum, totals.total);
     const due = round(totals.total - paid, decimals);
     const change = round(Math.max(tenderedSum - totals.total, 0), decimals);
+    if (due > 0 && !ctxCan(ctx, "sales.credit")) throw new BusinessError("Vous n'êtes pas autorisé à vendre à crédit : encaissez la totalité");
     if (due > 0 && !input.customerId) throw new BusinessError("Une vente à crédit ou partiellement payée nécessite un client");
 
     if (input.customerId) {
@@ -234,6 +238,8 @@ export async function listSales(ctx: AppContext, opts: { page?: number; from?: D
     if (opts.from) conds.push(gte(sales.createdAt, opts.from));
     if (opts.to) conds.push(lt(sales.createdAt, opts.to));
     if (opts.customerId) conds.push(eq(sales.customerId, opts.customerId));
+    // Sans « ventes de tous les vendeurs », chacun ne voit que ses propres ventes.
+    if (!ctxCan(ctx, "sales.view_all")) conds.push(eq(sales.userId, ctx.userId));
     const where = conds.length ? and(...conds) : undefined;
     const rows = await tx
       .select({
@@ -271,7 +277,7 @@ export async function getSale(ctx: AppContext, id: string) {
       .leftJoin(users, eq(users.id, sales.userId))
       .innerJoin(stores, eq(stores.id, sales.storeId))
       .where(eq(sales.id, id));
-    if (!row) throw new NotFoundError("Vente");
+    if (!row || (!ctxCan(ctx, "sales.view_all") && row.sale.userId !== ctx.userId)) throw new NotFoundError("Vente");
     const items = await tx.select().from(saleItems).where(eq(saleItems.saleId, id));
     const pays = await tx
       .select({ id: payments.id, amount: payments.amount, method: paymentMethods.label, createdAt: payments.createdAt, reference: payments.reference })

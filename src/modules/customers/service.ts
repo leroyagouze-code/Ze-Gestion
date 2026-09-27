@@ -6,7 +6,7 @@ import { audit } from "@/lib/audit";
 import { NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
 import { optText } from "@/lib/zod";
-import { ctxAssert, type AppContext } from "@/modules/auth/context";
+import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
 
 export const customerSchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(200),
@@ -68,7 +68,7 @@ export async function getCustomer(ctx: AppContext, id: string) {
 }
 
 export async function createCustomer(ctx: AppContext, raw: CustomerInput) {
-  ctxAssert(ctx, "customers.edit");
+  if (!ctxCan(ctx, "customers.create")) ctxAssert(ctx, "customers.edit");
   const input = customerSchema.parse(raw);
   return withTenant(ctx, async (tx) => {
     const [c] = await tx.insert(customers).values({ companyId: ctx.companyId, ...input }).returning({ id: customers.id });

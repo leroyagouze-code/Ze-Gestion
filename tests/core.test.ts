@@ -126,7 +126,7 @@ describe("permissions", () => {
   it("un caissier ne voit pas les prix d'achat et ne peut pas annuler", async () => {
     const admin = await newCompany();
     const pid = await createProduct(admin, { name: "Sucre", salePrice: 800, purchasePrice: 600, initialStock: 5 });
-    const cashier = { ...admin, roleName: "Caissier", permissions: ["sales.create", "sales.view", "products.view", "customers.view"] };
+    const cashier = { ...admin, roleName: "Caissier", isAdmin: false, permissions: ["sales.create", "sales.view", "products.view", "customers.view"] };
     const list = await listProducts(cashier, {});
     expect(list.rows[0].purchasePrice).toBeNull();
     await expect(createProduct(cashier, { name: "x", salePrice: 1 })).rejects.toThrow(/Permission/);
