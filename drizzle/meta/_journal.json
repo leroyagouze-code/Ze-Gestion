@@ -57,6 +57,13 @@
       "when": 1790518856932,
       "tag": "0007_licences",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790521487988,
+      "tag": "0008_metiers",
+      "breakpoints": true
     }
   ]
 }

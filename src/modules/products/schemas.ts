@@ -23,5 +23,7 @@ export const productSchema = z.object({
     .transform((v) => (v ? v : null))
     .pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date invalide").nullable()),
   initialStock: optNum,
+  /** Champs du métier (clé → valeur), validés par cleanAttributes. Absent : inchangés. */
+  attributes: z.record(z.string(), z.string()).optional(),
 });
 export type ProductInput = z.input<typeof productSchema>;

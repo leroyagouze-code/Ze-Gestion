@@ -17,7 +17,10 @@ type Product = {
   taxRate: number;
   stock: number;
 };
-type Line = { product: Product; quantity: number; discount: number };
+type Line = { product: Product; quantity: number; discount: number; qtyText?: string };
+
+/** Articles vendus au poids ou au volume : saisie décimale ou « pour 500 F ». */
+const MEASURED = new Set(["kg", "g", "litre", "l", "mètre"]);
 type Method = { id: string; label: string; type: string };
 type Pay = { paymentMethodId: string; amount: string; reference: string };
 
@@ -66,7 +69,7 @@ export function Pos({
   const add = useCallback((p: Product, qty = 1) => {
     setCart((c) => {
       const i = c.findIndex((l) => l.product.id === p.id);
-      if (i >= 0) return c.map((l, j) => (j === i ? { ...l, quantity: l.quantity + qty } : l));
+      if (i >= 0) return c.map((l, j) => (j === i ? { ...l, qtyText: undefined, quantity: l.quantity + qty } : l));
       return [...c, { product: p, quantity: qty, discount: 0 }];
     });
     setError(null);
@@ -163,17 +166,35 @@ export function Pos({
               <div className="text-right text-sm font-semibold">{m(totals.lines[i]?.lineTotal ?? 0)}</div>
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, quantity: Math.max(x.quantity - 1, 0.001) } : x)))}><Minus size={16} /></button>
+              <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, qtyText: undefined, quantity: Math.max(x.quantity - 1, 0.001) } : x)))}><Minus size={16} /></button>
               <input
                 className="input h-9 w-20 text-center"
                 inputMode="decimal"
-                value={l.quantity}
+                value={l.qtyText ?? String(l.quantity)}
                 onChange={(e) => {
-                  const v = Number(e.target.value.replace(",", "."));
-                  if (!Number.isNaN(v)) setCart((c) => c.map((x, j) => (j === i ? { ...x, quantity: v } : x)));
+                  // Le texte saisi est gardé tel quel (« 0, » puis « 0,75 ») ; la quantité suit dès qu'elle est valide
+                  const text = e.target.value;
+                  const v = Number(text.replace(",", "."));
+                  setCart((c) => c.map((x, j) => (j === i ? { ...x, qtyText: text, quantity: !Number.isNaN(v) && v > 0 ? v : x.quantity } : x)));
                 }}
+                onBlur={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, qtyText: undefined } : x)))}
               />
-              <button className="btn-secondary h-9 w-9 p-0" aria-label="Plus" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x)))}><Plus size={16} /></button>
+              <button className="btn-secondary h-9 w-9 p-0" aria-label="Plus" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, qtyText: undefined, quantity: x.quantity + 1 } : x)))}><Plus size={16} /></button>
+              {MEASURED.has(l.product.unit.toLowerCase()) && price(l.product) > 0 && (
+                <input
+                  className="input h-9 w-28"
+                  placeholder="ou montant"
+                  title={`Montant à servir : la quantité en ${l.product.unit} est calculée`}
+                  inputMode="decimal"
+                  onChange={(e) => {
+                    const amount = Number(e.target.value.replace(/\s/g, "").replace(",", "."));
+                    if (!Number.isNaN(amount) && amount > 0) {
+                      const q = Math.round((amount / price(l.product)) * 1000) / 1000;
+                      setCart((c) => c.map((x, j) => (j === i ? { ...x, qtyText: undefined, quantity: Math.max(q, 0.001) } : x)));
+                    }
+                  }}
+                />
+              )}
               {canDiscount && <input
                 className="input h-9 w-24"
                 placeholder="Remise"

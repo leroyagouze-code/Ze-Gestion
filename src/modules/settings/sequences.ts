@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Tx } from "@/db";
 import { documentSequences } from "@/db/schema";
 
-export type DocType = "invoice" | "sale" | "quote" | "delivery" | "purchase_order";
+export type DocType = "invoice" | "sale" | "quote" | "delivery" | "purchase_order" | "repair_order";
 
 export const DEFAULT_SEQUENCES: { docType: DocType; prefix: string }[] = [
   { docType: "invoice", prefix: "FACT" },
@@ -10,6 +10,7 @@ export const DEFAULT_SEQUENCES: { docType: DocType; prefix: string }[] = [
   { docType: "quote", prefix: "DEV" },
   { docType: "delivery", prefix: "BL" },
   { docType: "purchase_order", prefix: "BC" },
+  { docType: "repair_order", prefix: "OR" },
 ];
 
 export function formatNumber(pattern: string, prefix: string, year: number, seq: number, padding: number) {

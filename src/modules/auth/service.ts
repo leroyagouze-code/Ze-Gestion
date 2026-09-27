@@ -89,6 +89,7 @@ export async function signup(raw: SignupInput, meta: { ip?: string | null; userA
       taxId: input.taxId,
       billingAddress: input.billingAddress,
       extraInfo: input.extraInfo,
+      businessType: input.businessType,
     });
     await tx.insert(users).values({
       id: userId,

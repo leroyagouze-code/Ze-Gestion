@@ -1,5 +1,6 @@
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Card, Field, PageHeader, SelectField, TextArea } from "@/components/ui";
+import { TRADES } from "@/lib/trades";
 import { requireContext } from "@/lib/auth/server";
 import { COUNTRIES, CURRENCIES } from "@/lib/locale";
 import { updateCompanyAction } from "../actions";
@@ -41,6 +42,13 @@ export default async function CompanySettingsPage({ searchParams }: { searchPara
             <Field label="WhatsApp" name="whatsapp" type="tel" defaultValue={c.whatsapp ?? ""} />
             <Field label="Adresse" name="address" defaultValue={c.address ?? ""} />
             <Field label="Ville" name="city" defaultValue={c.city ?? ""} />
+            <SelectField
+              label="Métier"
+              name="businessType"
+              defaultValue={c.businessType}
+              options={Object.entries(TRADES).map(([value, t]) => ({ value, label: t.label }))}
+              className="sm:col-span-2"
+            />
             <SelectField label="Pays" name="country" defaultValue={c.country} options={COUNTRIES} />
             <SelectField label="Devise" name="currency" defaultValue={c.currency} options={CURRENCIES} />
             <Field label="N° d'identification fiscale" name="taxId" defaultValue={c.taxId ?? ""} />

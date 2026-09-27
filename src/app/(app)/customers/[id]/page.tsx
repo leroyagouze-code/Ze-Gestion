@@ -8,6 +8,8 @@ import { NotFoundError } from "@/lib/errors";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { getCustomer } from "@/modules/customers/service";
+import { getTrade } from "@/lib/trades";
+import { listVehicles } from "@/modules/repairs/service";
 import { INVOICE_STATUS } from "@/modules/invoices/labels";
 import { listPaymentMethods } from "@/modules/sales/service";
 import { customerPaymentAction, updateCustomerAction } from "../actions";
@@ -24,6 +26,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const m = (v: number) => formatMoney(v, ctx.company.currency);
   const canPay = can(ctx.permissions, "sales.create") && c.balanceDue > 0;
   const methods = canPay ? await listPaymentMethods(ctx, { excludeCredit: true }) : [];
+  const vehicles = getTrade(ctx.company.businessType).workshop ? await listVehicles(ctx, c.id) : [];
   const wa = (c.whatsapp || c.phone)?.replace(/[^\d]/g, "");
   return (
     <>
@@ -40,6 +43,21 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
+          {vehicles.length > 0 && (
+            <Card title="Véhicules">
+              <ul className="divide-y divide-slate-100 text-sm">
+                {vehicles.map((v) => (
+                  <li key={v.id} className="flex items-center justify-between py-2">
+                    <span>
+                      <span className="font-mono font-medium">{v.plate}</span>{" "}
+                      <span className="text-slate-500">{[v.brand, v.model, v.year].filter(Boolean).join(" ")}</span>
+                    </span>
+                    <Link href={`/repairs?q=${encodeURIComponent(v.plate)}&status=all`} className="text-brand-700 hover:underline">Réparations</Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <Card title="Achats">
             {data.sales.length === 0 ? <p className="text-sm text-slate-500">Aucun achat.</p> : (
               <table className="table">

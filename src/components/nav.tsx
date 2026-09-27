@@ -10,6 +10,7 @@ import {
   FileText,
   History,
   KeyRound,
+  Wrench,
   LayoutDashboard,
   Menu,
   Package,
@@ -41,6 +42,7 @@ const ICONS = {
   audit: History,
   admin: Shield,
   licence: KeyRound,
+  repairs: Wrench,
 };
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };

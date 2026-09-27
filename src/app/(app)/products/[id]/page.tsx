@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/dates";
 import { NotFoundError } from "@/lib/errors";
 import { formatQty } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { attributeSummary, getTrade } from "@/lib/trades";
 import { getProduct, productFormOptions } from "@/modules/products/service";
 import { listMovements } from "@/modules/stock/service";
 import { MOVEMENT_LABELS } from "@/modules/stock/labels";
@@ -27,11 +28,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     canStock ? listMovements(ctx, { productId: id }) : null,
   ]);
   const p = data.product;
+  const trade = getTrade(ctx.company.businessType);
   return (
     <>
       <PageHeader
         title={p.name}
-        subtitle={[p.sku && `SKU ${p.sku}`, p.barcode && `Code ${p.barcode}`].filter(Boolean).join(" · ") || undefined}
+        subtitle={[attributeSummary(trade, p.attributes), p.sku && `SKU ${p.sku}`, p.barcode && `Code ${p.barcode}`].filter(Boolean).join(" · ") || undefined}
         actions={
           <>
             <Badge tone={data.stock <= 0 ? "red" : data.stock <= p.minStock ? "amber" : "green"}>
@@ -48,7 +50,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2">
           {options ? (
-            <Card title="Fiche produit">
+            <Card title={`Fiche ${trade.item.one}`}>
               {p.imageUrl && <img src={p.imageUrl} alt="" className="mb-4 h-28 w-28 rounded-lg object-cover ring-1 ring-slate-200" />}
               <ProductForm
                 action={updateProductAction.bind(null, id)}
@@ -57,6 +59,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                 categoryName={data.categoryName}
                 brandName={data.brandName}
                 canCost={can(ctx.permissions, "products.cost")}
+                trade={trade}
               />
             </Card>
           ) : (

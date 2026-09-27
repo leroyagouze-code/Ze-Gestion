@@ -7,6 +7,7 @@ import { assertOwned } from "@/db/owned";
 import { isOwnFileUrl } from "@/lib/storage";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
+import { cleanAttributes, getTrade } from "@/lib/trades";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
 import { applyMovement, totalStockSql } from "@/modules/stock/service";
@@ -26,7 +27,11 @@ async function upsertNamed(tx: Tx, companyId: string, table: typeof categories |
 
 function mapUniqueError(e: unknown): never {
   const code = (e as { code?: string; cause?: { code?: string } })?.cause?.code ?? (e as { code?: string })?.code;
-  if (code === "23505") throw new BusinessError("Ce SKU existe déjà pour un autre produit");
+  if (code === "23505") {
+    const constraint = (e as { cause?: { constraint?: string } })?.cause?.constraint ?? (e as { constraint?: string })?.constraint;
+    if (constraint === "products_company_vin_uq") throw new BusinessError("Ce numéro de châssis (VIN) existe déjà");
+    throw new BusinessError("Ce SKU existe déjà pour un autre produit");
+  }
   throw e;
 }
 
@@ -37,7 +42,16 @@ export async function listProducts(ctx: AppContext, opts: { q?: string; page?: n
     const conds = [eq(products.isActive, true)];
     if (opts.q) {
       const q = opts.q.trim();
-      conds.push(or(ilike(products.name, contains(q)), eq(products.sku, q), eq(products.barcode, q), eq(products.reference, q))!);
+      conds.push(
+        or(
+          ilike(products.name, contains(q)),
+          eq(products.sku, q),
+          eq(products.barcode, q),
+          eq(products.reference, q),
+          // Taille, couleur, n° de lot, n° de châssis…
+          sql`${products.attributes}::text ilike ${contains(q)}`,
+        )!,
+      );
     }
     if (opts.categoryId) conds.push(eq(products.categoryId, opts.categoryId));
     const where = and(...conds);
@@ -52,6 +66,8 @@ export async function listProducts(ctx: AppContext, opts: { q?: string; page?: n
         purchasePrice: products.purchasePrice,
         unit: products.unit,
         minStock: products.minStock,
+        attributes: products.attributes,
+        expiryDate: products.expiryDate,
         category: categories.name,
         stock: totalStockSql(),
       })
@@ -133,6 +149,7 @@ async function createInTx(tx: Tx, ctx: AppContext, input: ReturnType<typeof prod
       unit: input.unit,
       supplierId: input.supplierId,
       expiryDate: input.expiryDate,
+      attributes: input.attributes ? cleanAttributes(getTrade(ctx.company.businessType), input.attributes) : {},
     })
     .returning({ id: products.id });
   if (input.initialStock && input.initialStock > 0) {
@@ -192,6 +209,7 @@ export async function updateProduct(ctx: AppContext, id: string, raw: ProductInp
         unit: input.unit,
         supplierId: input.supplierId,
         expiryDate: input.expiryDate,
+        attributes: input.attributes ? cleanAttributes(getTrade(ctx.company.businessType), input.attributes) : before.attributes,
         updatedAt: new Date(),
       })
       .where(eq(products.id, id))
@@ -242,7 +260,12 @@ export async function searchForPos(ctx: AppContext, q: string, limit = 20) {
       tx.select(cols).from(products).leftJoin(taxes, eq(taxes.id, products.taxId));
     if (!term) return base().where(eq(products.isActive, true)).orderBy(desc(products.updatedAt)).limit(limit);
     const exact = await base()
-      .where(and(eq(products.isActive, true), or(eq(products.barcode, term), eq(products.sku, term), eq(products.reference, term))))
+      .where(
+        and(
+          eq(products.isActive, true),
+          or(eq(products.barcode, term), eq(products.sku, term), eq(products.reference, term), sql`${products.attributes}->>'vin' = ${term.toUpperCase()}`),
+        ),
+      )
       .limit(limit);
     if (exact.length) return exact;
     return base()

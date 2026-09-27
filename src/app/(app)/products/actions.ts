@@ -11,8 +11,17 @@ import { formToObject } from "@/lib/zod";
 import { createProduct, deleteProduct, importProducts, updateProduct } from "@/modules/products/service";
 
 async function withImage(fd: FormData, ctx: AppContext) {
-  const data = formToObject(fd);
+  const data: Record<string, unknown> = formToObject(fd);
   delete data.imageUrl; // seule l'adresse produite par le serveur est acceptée
+  // Champs du métier : attr_<clé> → attributes.<clé>
+  const attributes: Record<string, string> = {};
+  for (const k of Object.keys(data)) {
+    if (k.startsWith("attr_")) {
+      attributes[k.slice(5)] = String(data[k] ?? "");
+      delete data[k];
+    }
+  }
+  if (fd.has("$attributes")) data.attributes = attributes;
   const file = fd.get("image");
   if (file instanceof File && file.size > 0) {
     ctxAssert(ctx, "products.edit"); // droits vérifiés avant d'écrire sur le disque

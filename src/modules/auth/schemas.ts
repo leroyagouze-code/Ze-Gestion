@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRADE_KEYS, type TradeKey } from "@/lib/trades";
 
 const optional = z
   .string()
@@ -8,6 +9,7 @@ const optional = z
   .transform((v) => (v ? v : null));
 
 export const signupSchema = z.object({
+  businessType: z.enum(TRADE_KEYS as [TradeKey, ...TradeKey[]]).default("general"),
   companyName: z.string().trim().min(2, "Nom de l'entreprise requis").max(120),
   ownerName: z.string().trim().min(2, "Nom du responsable requis").max(120),
   email: z.string().trim().toLowerCase().email("Email invalide"),

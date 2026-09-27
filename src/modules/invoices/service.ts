@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { contains } from "@/lib/search";
 import { z } from "zod";
-import { db } from "@/db";
+import { db, type Tx } from "@/db";
 import {
   customers,
   invoiceItems,
@@ -112,9 +112,14 @@ export const manualInvoiceSchema = z.object({
 export async function createManualInvoice(ctx: AppContext, raw: z.input<typeof manualInvoiceSchema>) {
   ctxAssert(ctx, "invoices.create");
   const input = manualInvoiceSchema.parse(raw);
+  return withTenant(ctx, (tx) => createManualInvoiceInTx(tx, ctx, input));
+}
+
+/** Même facture, dans une transaction existante (ex. facturation d'un ordre de réparation). */
+export async function createManualInvoiceInTx(tx: Tx, ctx: AppContext, input: z.output<typeof manualInvoiceSchema>) {
   const decimals = currencyDecimals(ctx.company.currency);
   const totals = computeTotals(input.items, input.discount, decimals);
-  return withTenant(ctx, async (tx) => {
+  {
     const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)))[0] : null;
     if (input.customerId && !customer) throw new NotFoundError("Client");
     for (const i of input.items) await assertOwned(tx, products, i.productId, "Produit");
@@ -162,7 +167,7 @@ export async function createManualInvoice(ctx: AppContext, raw: z.input<typeof m
     }
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "invoice.created", entityType: "invoice", entityId: inv.id, metadata: { number, total: totals.total }, ip: ctx.ip });
     return inv.id;
-  });
+  }
 }
 
 export async function recordInvoicePayment(ctx: AppContext, invoiceId: string, paymentMethodId: string, amount: number, reference?: string | null) {

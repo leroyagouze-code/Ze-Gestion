@@ -9,7 +9,7 @@ import { SettingsTabs } from "../tabs";
 
 export const metadata = { title: "Paramètres" };
 
-const DOC_LABELS: Record<string, string> = { invoice: "Factures", sale: "Tickets de vente", quote: "Devis", delivery: "Bons de livraison", purchase_order: "Bons de commande" };
+const DOC_LABELS: Record<string, string> = { invoice: "Factures", sale: "Tickets de vente", quote: "Devis", delivery: "Bons de livraison", purchase_order: "Bons de commande", repair_order: "Ordres de réparation" };
 const TYPE_LABELS: Record<string, string> = { cash: "Espèces", mobile_money: "Mobile money", card: "Carte", transfer: "Virement", credit: "Crédit", other: "Autre" };
 
 export default async function BillingSettingsPage() {

@@ -78,6 +78,8 @@ export const companies = pgTable("companies", {
   allowNegativeStock: boolean("allow_negative_stock").notNull().default(false),
   locale: text("locale").notNull().default("fr"),
   timezone: text("timezone").notNull().default("Africa/Lome"),
+  /** Métier du client (voir src/lib/trades.ts) : adapte les mots, les fiches et les menus. */
+  businessType: text("business_type").notNull().default("general"),
   status: companyStatus("status").notNull().default("active"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -343,6 +345,8 @@ export const products = pgTable(
     unit: text("unit").notNull().default("pièce"),
     supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
     expiryDate: date("expiry_date"),
+    /** Champs propres au métier : taille, couleur, n° de lot, n° de châssis… */
+    attributes: jsonb("attributes").$type<Record<string, string>>().notNull().default({}),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -352,6 +356,10 @@ export const products = pgTable(
     index("products_company_barcode_idx").on(t.companyId, t.barcode),
     index("products_company_reference_idx").on(t.companyId, t.reference),
     index("products_name_trgm_idx").using("gin", sql`${t.name} gin_trgm_ops`),
+    // Concessionnaire : un numéro de châssis ne peut exister qu'une fois parmi les véhicules actifs
+    uniqueIndex("products_company_vin_uq")
+      .on(t.companyId, sql`(${t.attributes}->>'vin')`)
+      .where(sql`${t.attributes} ? 'vin' and ${t.isActive}`),
   ],
 );
 
@@ -618,3 +626,79 @@ export const TENANT_TABLES = [
   "payments",
   "expenses",
 ] as const;
+
+/* ───────────────────────── Garage : véhicules des clients et ordres de réparation ───────────────────────── */
+
+export const vehicles = pgTable(
+  "vehicles",
+  {
+    id: id(),
+    companyId: companyId(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    plate: text("plate").notNull(),
+    brand: text("brand"),
+    model: text("model"),
+    year: integer("year"),
+    vin: text("vin"),
+    mileage: integer("mileage"),
+    notes: text("notes"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("vehicles_company_plate_uq").on(t.companyId, t.plate),
+    index("vehicles_company_customer_idx").on(t.companyId, t.customerId),
+  ],
+);
+
+export const repairStatus = pgEnum("repair_status", ["open", "in_progress", "done", "invoiced", "cancelled"]);
+
+export const repairOrders = pgTable(
+  "repair_orders",
+  {
+    id: id(),
+    companyId: companyId(),
+    number: text("number").notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id),
+    status: repairStatus("status").notNull().default("open"),
+    mileage: integer("mileage"),
+    complaint: text("complaint"),
+    diagnosis: text("diagnosis"),
+    promisedAt: date("promised_at"),
+    invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("repair_orders_company_number_uq").on(t.companyId, t.number),
+    index("repair_orders_company_created_idx").on(t.companyId, t.createdAt.desc()),
+    index("repair_orders_vehicle_idx").on(t.companyId, t.vehicleId),
+  ],
+);
+
+export const repairItemKind = pgEnum("repair_item_kind", ["part", "labor"]);
+
+export const repairOrderItems = pgTable(
+  "repair_order_items",
+  {
+    id: id(),
+    companyId: companyId(),
+    repairOrderId: uuid("repair_order_id")
+      .notNull()
+      .references(() => repairOrders.id, { onDelete: "cascade" }),
+    kind: repairItemKind("kind").notNull(),
+    productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    description: text("description").notNull(),
+    quantity: qty("quantity").notNull(),
+    unitPrice: money("unit_price").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("repair_order_items_order_idx").on(t.repairOrderId)],
+);

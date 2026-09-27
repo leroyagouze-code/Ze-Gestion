@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Field, SelectField, TextArea } from "@/components/ui";
 import { COUNTRIES, CURRENCIES } from "@/lib/locale";
+import { TRADES } from "@/lib/trades";
 import { signupAction } from "../actions";
 
 export const metadata = { title: "Créer mon entreprise" };
@@ -12,6 +13,21 @@ export default function SignupPage() {
       <h1 className="mb-1 text-lg font-semibold">Créer mon entreprise</h1>
       <p className="mb-4 text-sm text-slate-500">14 jours d&apos;essai, sans carte bancaire. Votre espace est prêt en quelques secondes.</p>
       <ActionForm action={signupAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2" showOk={false}>
+        <fieldset className="sm:col-span-2">
+          <legend className="label">Votre métier</legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {Object.entries(TRADES).map(([key, t]) => (
+              <label key={key} className="flex cursor-pointer gap-2 rounded-lg border border-slate-200 p-3 text-sm has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50">
+                <input type="radio" name="businessType" value={key} defaultChecked={key === "general"} className="mt-0.5 accent-brand-700" />
+                <span>
+                  <span className="block font-medium">{t.label}</span>
+                  <span className="block text-xs text-slate-500">{t.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Le logiciel s&apos;adapte à votre métier. Vous pourrez le changer dans les paramètres.</p>
+        </fieldset>
         <Field label="Nom de l'entreprise" name="companyName" required className="sm:col-span-2" />
         <Field label="Nom du responsable" name="ownerName" required />
         <Field label="Téléphone" name="phone" type="tel" placeholder="+228 90 00 00 00" />

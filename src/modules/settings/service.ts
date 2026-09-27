@@ -5,11 +5,13 @@ import { companies, documentSequences, paymentMethods, stores, taxes } from "@/d
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
+import { TRADE_KEYS, type TradeKey } from "@/lib/trades";
 import { optText } from "@/lib/zod";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
 
 export const companySchema = z.object({
   name: z.string().trim().min(2).max(120),
+  businessType: z.enum(TRADE_KEYS as [TradeKey, ...TradeKey[]]),
   ownerName: z.string().trim().min(2).max(120),
   email: z.string().trim().toLowerCase().email(),
   phone: optText(40),

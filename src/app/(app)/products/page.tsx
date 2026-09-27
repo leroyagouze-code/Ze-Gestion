@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { Badge, EmptyState, PageHeader, Pagination, SearchBar, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
+import { formatDate } from "@/lib/dates";
 import { formatMoney, formatQty } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { attributeSummary, getTrade } from "@/lib/trades";
 import { listProducts } from "@/modules/products/service";
 
 export const metadata = { title: "Produits" };
@@ -13,29 +15,30 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const data = await listProducts(ctx, { q: sp.q, page: Number(sp.page) });
   const canEdit = can(ctx.permissions, "products.edit");
   const canCost = can(ctx.permissions, "products.cost");
+  const trade = getTrade(ctx.company.businessType);
   const m = (v: number) => formatMoney(v, ctx.company.currency);
   return (
     <>
       <PageHeader
-        title="Produits"
+        title={trade.item.many}
         actions={
           <>
             {can(ctx.permissions, "data.export") && <a href="/api/export/products" className="btn-secondary">Exporter CSV</a>}
             {canEdit && <Link href="/products/import" className="btn-secondary">Importer</Link>}
-            {canEdit && <Link href="/products/new" className="btn-primary">Nouveau produit</Link>}
+            {canEdit && <Link href="/products/new" className="btn-primary">{trade.item.new}</Link>}
           </>
         }
       />
-      <SearchBar q={sp.q} placeholder="Nom, SKU, code-barres, référence…" />
+      <SearchBar q={sp.q} placeholder={trade.uniqueItems ? "Nom, numéro de châssis, modèle…" : trade.attributes.length ? `Nom, code-barres, ${trade.attributes.map((f) => f.label.toLowerCase()).slice(0, 2).join(", ")}…` : "Nom, SKU, code-barres, référence…"} />
       <div className="card">
         {data.rows.length === 0 ? (
-          <EmptyState title="Aucun produit">{canEdit && <Link href="/products/new" className="text-brand-700">Ajouter votre premier produit</Link>}</EmptyState>
+          <EmptyState title={`Aucun ${trade.item.one === "pièce" ? "article" : trade.item.one}`}>{canEdit && <Link href="/products/new" className="text-brand-700">{trade.item.new}</Link>}</EmptyState>
         ) : (
           <TableWrap>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Produit</th>
+                  <th>{trade.item.one.charAt(0).toUpperCase() + trade.item.one.slice(1)}</th>
                   <th className="hidden md:table-cell">SKU / code</th>
                   <th className="hidden md:table-cell">Catégorie</th>
                   {canCost && <th className="text-right">Achat</th>}
@@ -48,6 +51,8 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                   <tr key={p.id}>
                     <td>
                       <Link href={`/products/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700">{p.name}</Link>
+                      {attributeSummary(trade, p.attributes) && <div className="text-xs text-slate-500">{attributeSummary(trade, p.attributes)}</div>}
+                      {trade.perishable && p.expiryDate && <div className="text-xs text-amber-700">Péremption : {formatDate(p.expiryDate)}</div>}
                     </td>
                     <td className="hidden text-slate-500 md:table-cell">{p.sku || p.barcode || "—"}</td>
                     <td className="hidden text-slate-500 md:table-cell">{p.category ?? "—"}</td>
