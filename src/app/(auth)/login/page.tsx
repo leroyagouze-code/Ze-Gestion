@@ -8,7 +8,7 @@ import { loginAction } from "../actions";
 export const metadata = { title: "Connexion" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  if (await getContext()) redirect("/dashboard");
+  if (await getContext()) redirect("/");
   const { error } = await searchParams;
   return (
     <div className="card p-6">

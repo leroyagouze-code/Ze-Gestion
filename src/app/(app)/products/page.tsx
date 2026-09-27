@@ -20,7 +20,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         title="Produits"
         actions={
           <>
-            <a href="/api/export/products" className="btn-secondary">Exporter CSV</a>
+            {can(ctx.permissions, "data.export") && <a href="/api/export/products" className="btn-secondary">Exporter CSV</a>}
             {canEdit && <Link href="/products/import" className="btn-secondary">Importer</Link>}
             {canEdit && <Link href="/products/new" className="btn-primary">Nouveau produit</Link>}
           </>

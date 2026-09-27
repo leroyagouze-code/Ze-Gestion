@@ -8,8 +8,24 @@ import { hashPassword } from "@/lib/auth/password";
 import { deleteUserSessions } from "@/lib/auth/session";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
-import { ALL_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { optText, optUuid } from "@/lib/zod";
+import { ADMIN_ROLE, ALL_PERMISSIONS, type Permission } from "@/lib/permissions";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
+
+type RoleRow = { name: string; isSystem: boolean; permissions: string[] };
+const isAdminRole = (r: RoleRow) => r.isSystem && r.name === ADMIN_ROLE;
+
+/**
+ * Garde-fou contre l'élévation de droits : seul l'administrateur peut tout attribuer.
+ * Un autre gestionnaire des utilisateurs ne peut attribuer ou modifier que des rôles
+ * dont toutes les permissions sont déjà les siennes, et jamais le rôle Administrateur.
+ */
+function assertCanGrant(ctx: AppContext, r: RoleRow) {
+  if (ctx.isAdmin) return;
+  if (isAdminRole(r)) throw new BusinessError("Seul un administrateur peut attribuer ou modifier le rôle Administrateur");
+  const extra = r.permissions.filter((p) => !ctx.permissions.includes(p));
+  if (extra.length) throw new BusinessError("Vous ne pouvez pas attribuer des droits que vous n'avez pas vous-même");
+}
 
 export async function listMembers(ctx: AppContext) {
   ctxAssert(ctx, "users.manage");
@@ -58,10 +74,10 @@ async function enforceUserLimit(ctx: AppContext) {
 export const newUserSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   email: z.string().trim().toLowerCase().email("Email invalide"),
-  phone: z.string().trim().max(40).nullish(),
+  phone: optText(40),
   password: z.string().min(8, "8 caractères minimum"),
   roleId: z.string().uuid(),
-  storeId: z.string().uuid().nullish(),
+  storeId: optUuid,
 });
 
 /** Ajoute un utilisateur : crée le compte s'il n'existe pas, sinon rattache le compte existant. */
@@ -72,8 +88,9 @@ export async function addMember(ctx: AppContext, raw: z.input<typeof newUserSche
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
   const passwordHash = existing ? null : await hashPassword(input.password);
   return withTenant(ctx, async (tx) => {
-    const [role] = await tx.select({ id: roles.id }).from(roles).where(eq(roles.id, input.roleId));
+    const [role] = await tx.select().from(roles).where(eq(roles.id, input.roleId));
     if (!role) throw new NotFoundError("Rôle");
+    assertCanGrant(ctx, role);
     let userId = existing?.id;
     if (!userId) {
       const [u] = await tx
@@ -98,6 +115,15 @@ export async function updateMember(ctx: AppContext, membershipId: string, patch:
     if (!m) throw new NotFoundError("Utilisateur");
     if (m.isOwner && (patch.isActive === false || patch.roleId)) throw new BusinessError("Le propriétaire du compte ne peut pas être désactivé ni changer de rôle");
     if (m.userId === ctx.userId && patch.isActive === false) throw new BusinessError("Vous ne pouvez pas vous désactiver vous-même");
+    if (m.userId === ctx.userId && patch.roleId && !ctx.isAdmin) throw new BusinessError("Vous ne pouvez pas changer votre propre rôle");
+    // Le membre visé : un non-administrateur ne peut pas toucher à un compte plus puissant que lui.
+    const [current] = await tx.select().from(roles).where(eq(roles.id, m.roleId));
+    if (current) assertCanGrant(ctx, current);
+    if (patch.roleId) {
+      const [next] = await tx.select().from(roles).where(eq(roles.id, patch.roleId));
+      if (!next) throw new NotFoundError("Rôle");
+      assertCanGrant(ctx, next);
+    }
     await tx.update(memberships).set(patch).where(eq(memberships.id, membershipId));
     if (patch.isActive === false) await deleteUserSessions(m.userId);
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "user.updated", entityType: "user", entityId: m.userId, metadata: patch, ip: ctx.ip });
@@ -116,17 +142,34 @@ export async function saveRole(ctx: AppContext, id: string | null, raw: z.input<
     if (id) {
       const [r] = await tx.select().from(roles).where(eq(roles.id, id));
       if (!r) throw new NotFoundError("Rôle");
-      // Garde-fou : l'administrateur garde toujours la gestion des utilisateurs
-      if (r.name === "Administrateur" && !input.permissions.includes("users.manage")) {
-        throw new BusinessError("Le rôle Administrateur doit conserver la gestion des utilisateurs");
-      }
+      if (isAdminRole(r)) throw new BusinessError("Le rôle Administrateur détient toujours tous les droits et ne peut pas être modifié");
+      assertCanGrant(ctx, r);
+      assertCanGrant(ctx, { name: input.name, isSystem: false, permissions: input.permissions });
       await tx.update(roles).set({ name: r.isSystem ? r.name : input.name, permissions: input.permissions }).where(eq(roles.id, id));
       await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "role.updated", entityType: "role", entityId: id, metadata: { permissions: input.permissions }, ip: ctx.ip });
       return id;
     }
+    assertCanGrant(ctx, { name: input.name, isSystem: false, permissions: input.permissions });
+    const [dup] = await tx.select({ id: roles.id }).from(roles).where(sql`lower(${roles.name}) = lower(${input.name})`);
+    if (dup) throw new BusinessError("Un rôle porte déjà ce nom");
     const [r] = await tx.insert(roles).values({ companyId: ctx.companyId, name: input.name, permissions: input.permissions }).returning({ id: roles.id });
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "role.created", entityType: "role", entityId: r.id, metadata: { name: input.name }, ip: ctx.ip });
     return r.id;
+  });
+}
+
+/** Supprime un rôle personnalisé qui n'est attribué à personne. Les rôles par défaut sont conservés. */
+export async function deleteRole(ctx: AppContext, id: string) {
+  ctxAssert(ctx, "users.manage");
+  return withTenant(ctx, async (tx) => {
+    const [r] = await tx.select().from(roles).where(eq(roles.id, id));
+    if (!r) throw new NotFoundError("Rôle");
+    if (r.isSystem) throw new BusinessError("Les rôles par défaut ne peuvent pas être supprimés");
+    assertCanGrant(ctx, r);
+    const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(memberships).where(eq(memberships.roleId, id));
+    if (count > 0) throw new BusinessError(`Ce rôle est attribué à ${count} utilisateur(s). Changez d'abord leur rôle.`);
+    await tx.delete(roles).where(eq(roles.id, id));
+    await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "role.deleted", entityType: "role", entityId: id, metadata: { name: r.name }, ip: ctx.ip });
   });
 }
 

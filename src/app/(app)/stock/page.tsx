@@ -28,7 +28,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         actions={
           <>
             <Link href="/stock/movements" className="btn-secondary">Historique des mouvements</Link>
-            <a href="/api/export/stock" className="btn-secondary">Exporter CSV</a>
+            {can(ctx.permissions, "data.export") && <a href="/api/export/stock" className="btn-secondary">Exporter CSV</a>}
           </>
         }
       />

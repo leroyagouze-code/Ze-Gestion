@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { runAction, type ActionState } from "@/lib/actions";
 import { requireContext } from "@/lib/auth/server";
 import { formToObject } from "@/lib/zod";
-import { addMember, saveRole, updateMember } from "@/modules/users/service";
+import { addMember, deleteRole, saveRole, updateMember } from "@/modules/users/service";
 
 export async function addMemberAction(_: ActionState, fd: FormData): Promise<ActionState> {
   const ctx = await requireContext();
@@ -36,6 +36,16 @@ export async function saveRoleAction(id: string | null, _: ActionState, fd: Form
   const res = await runAction(async () => {
     await saveRole(ctx, id, { name: String(fd.get("name") ?? ""), permissions: fd.getAll("permissions").map(String) as never });
     return "Rôle enregistré";
+  });
+  revalidatePath("/users/roles");
+  return res;
+}
+
+export async function deleteRoleAction(id: string, _: ActionState, _fd: FormData): Promise<ActionState> {
+  const ctx = await requireContext();
+  const res = await runAction(async () => {
+    await deleteRole(ctx, id);
+    return "Rôle supprimé";
   });
   revalidatePath("/users/roles");
   return res;

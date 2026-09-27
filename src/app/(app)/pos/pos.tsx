@@ -28,11 +28,15 @@ export function Pos({
   decimals,
   paymentMethods,
   customers,
+  canDiscount,
+  canInvoice,
 }: {
   currency: string;
   decimals: number;
   paymentMethods: Method[];
   customers: { id: string; name: string; phone: string | null }[];
+  canDiscount: boolean;
+  canInvoice: boolean;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Product[]>([]);
@@ -170,27 +174,27 @@ export function Pos({
                 }}
               />
               <button className="btn-secondary h-9 w-9 p-0" aria-label="Plus" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x)))}><Plus size={16} /></button>
-              <input
+              {canDiscount && <input
                 className="input h-9 w-24"
                 placeholder="Remise"
                 inputMode="decimal"
                 value={l.discount || ""}
                 onChange={(e) => setCart((c) => c.map((x, j) => (j === i ? { ...x, discount: Number(e.target.value.replace(",", ".")) || 0 } : x)))}
-              />
+              />}
               <button className="btn-ghost ml-auto h-9 w-9 p-0 text-red-600" aria-label="Retirer" onClick={() => setCart((c) => c.filter((_, j) => j !== i))}><Trash2 size={16} /></button>
             </div>
           </div>
         ))}
       </div>
       <div className="space-y-3 border-t border-slate-200 p-4">
-        <div className="grid grid-cols-2 gap-2">
+        <div className={clsx("grid gap-2", canDiscount ? "grid-cols-2" : "grid-cols-1")}>
           <select className="input" value={customerId} onChange={(e) => setCustomerId(e.target.value)} aria-label="Client">
             <option value="">Client comptoir</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ""}</option>
             ))}
           </select>
-          <input className="input" placeholder="Remise globale" inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+          {canDiscount && <input className="input" placeholder="Remise globale" inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} />}
         </div>
         <div className="space-y-1 text-sm">
           <div className="flex justify-between text-slate-500"><span>Total HT</span><span>{m(totals.subtotal)}</span></div>
@@ -232,8 +236,8 @@ export function Pos({
           </div>
         )}
         {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-        <div className="grid grid-cols-2 gap-2">
-          <button className="btn-secondary py-3" disabled={!cart.length || pending} onClick={() => submit(true)}>Vente + facture</button>
+        <div className={clsx("grid gap-2", canInvoice ? "grid-cols-2" : "grid-cols-1")}>
+          {canInvoice && <button className="btn-secondary py-3" disabled={!cart.length || pending} onClick={() => submit(true)}>Vente + facture</button>}
           <button className="btn-primary py-3 text-base" disabled={!cart.length || pending} onClick={() => submit(false)}>
             {pending ? "…" : `Encaisser ${m(totals.total)}`}
           </button>
