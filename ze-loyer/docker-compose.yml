@@ -1,0 +1,14 @@
+# Base PostgreSQL locale pour le développement
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: zl_owner
+      POSTGRES_PASSWORD: owner
+      POSTGRES_DB: zeloyer
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+volumes:
+  pgdata:

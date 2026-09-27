@@ -2,6 +2,8 @@
 
 Plateforme SaaS de gestion commerciale pour les commerces d'Afrique de l'Ouest : caisse (POS), stock, factures, clients, fournisseurs, dépenses et rapports. Chaque entreprise a son propre espace, strictement isolé.
 
+> Ce dépôt contient aussi **ZE LOYER**, l'application de gestion locative : voir [`ze-loyer/README.md`](ze-loyer/README.md).
+
 Architecture, schéma de base de données, permissions et stratégie de déploiement : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Démarrage local
