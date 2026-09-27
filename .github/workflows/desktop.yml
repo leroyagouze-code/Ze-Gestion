@@ -1,0 +1,43 @@
+name: Logiciel Windows
+
+# Construit l'installateur Windows (ZE-Gestion-Installation-x.y.z.exe) sur une vraie machine Windows,
+# vérifie que la base intégrée et le serveur démarrent, puis publie l'installateur comme artefact.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  push:
+    branches: [main]
+    paths: ["desktop/**", "src/**", "drizzle/**", "package-lock.json"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: desktop
+      - name: Assembler l'application
+        run: node build/prepare.mjs --target=win
+        working-directory: desktop
+      - name: Test de démarrage (PostgreSQL intégré, migrations, serveur)
+        run: node build/smoke-test.cjs
+        working-directory: desktop
+        env:
+          ZE_PG_BIN: ${{ github.workspace }}\desktop\app\pgsql\bin
+      - name: Construire l'installateur
+        run: npx electron-builder --win nsis --x64 --publish never
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZE-Gestion-Windows
+          path: desktop/dist/*.exe
+          retention-days: 30
