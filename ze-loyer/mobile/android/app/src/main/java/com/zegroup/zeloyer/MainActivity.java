@@ -35,9 +35,16 @@ public class MainActivity extends BridgeActivity {
     private void download(String url, String userAgent, String contentDisposition, String mimeType) {
         Uri uri = Uri.parse(url);
         String serverUrl = getBridge().getServerUrl();
-        String serverHost = serverUrl != null ? Uri.parse(serverUrl).getHost() : null;
-        // Seulement en HTTPS, et seulement depuis le serveur ZE LOYER (le cookie de session ne part jamais ailleurs)
-        if (!"https".equals(uri.getScheme()) || serverHost == null || !serverHost.equals(uri.getHost())) {
+        Uri server = serverUrl != null ? Uri.parse(serverUrl) : null;
+        // Seulement depuis le serveur ZE LOYER lui-même (même protocole, même hôte, même port) :
+        // le cookie de session ne part jamais ailleurs. Le serveur est toujours en HTTPS dans l'APK
+        // distribué (scripts/configure.mjs refuse http, sauf version de test sur émulateur).
+        if (
+            server == null ||
+            !String.valueOf(server.getScheme()).equals(uri.getScheme()) ||
+            !String.valueOf(server.getHost()).equals(uri.getHost()) ||
+            server.getPort() != uri.getPort()
+        ) {
             Toast.makeText(this, "Téléchargement non autorisé", Toast.LENGTH_SHORT).show();
             return;
         }

@@ -74,3 +74,82 @@ jobs:
           name: ZE-LOYER-Android
           path: ze-loyer/mobile/dist/*.apk
           retention-days: 30
+
+  # Test de bout en bout sur un vrai émulateur Android (accéléré KVM) : APK de TEST relié à un site de démo local.
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: zl_owner
+          POSTGRES_PASSWORD: owner
+          POSTGRES_DB: zeloyer
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U zl_owner" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://zl_owner:owner@localhost:5432/zeloyer
+      APP_URL: http://10.0.2.2:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            ze-loyer/package-lock.json
+            ze-loyer/mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - name: Site ZE LOYER de démo (mode développement, http)
+        working-directory: ze-loyer
+        run: |
+          npm ci
+          npm run db:migrate
+          npm run db:seed
+          nohup npx next dev -p 3000 -H 0.0.0.0 > "$RUNNER_TEMP/site.log" 2>&1 &
+          for i in $(seq 1 90); do curl -sf localhost:3000/api/health && break; sleep 2; done
+          # Pré-compilation des pages du parcours (le mode dev compile à la première visite)
+          for p in /connexion /mon-espace /mon-espace/quittances /api/health; do curl -s -o /dev/null -w "$p %{http_code}\n" "localhost:3000$p"; done
+      - name: APK de test (serveur http://10.0.2.2:3000, débogage WebView)
+        working-directory: ze-loyer/mobile
+        env:
+          ZE_LOYER_URL: http://10.0.2.2:3000
+          ZE_LOYER_ALLOW_HTTP: "1"
+        run: |
+          npm ci
+          npm run sync
+          cd android && ./gradlew assembleDebug --no-daemon
+      - name: Activer KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Parcours sur émulateur Android 11
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SMOKE_OUT: ${{ github.workspace }}/ze-loyer/mobile/smoke
+          SMOKE_STOP_SERVER: pkill -f "next[ ]dev" ; pkill -f "next-serve[r]" ; true
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          profile: pixel_4
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          working-directory: ze-loyer/mobile
+          script: node scripts/emulator-smoke.mjs
+      - name: Journal du site en cas d'échec
+        if: failure()
+        run: tail -100 "$RUNNER_TEMP/site.log" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ZE-LOYER-Android-captures
+          path: ze-loyer/mobile/smoke
+          retention-days: 14
