@@ -1,4 +1,5 @@
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { currencyDecimals, round } from "@/lib/money";
 import { contains } from "@/lib/search";
 import { z } from "zod";
 import { customers, invoices, payments, paymentMethods, sales } from "@/db/schema";
@@ -106,21 +107,45 @@ export async function recordCustomerPayment(ctx: AppContext, raw: z.input<typeof
     await assertCollectMethod(tx, input.paymentMethodId);
     const amount = Math.min(input.amount, c.balanceDue);
     if (amount <= 0) return 0;
-    // Imputation sur les ventes les plus anciennes restant dues
-    const due = await tx
-      .select({ id: sales.id, dueAmount: sales.dueAmount, paidAmount: sales.paidAmount })
+    const base = { companyId: ctx.companyId, customerId: c.id, paymentMethodId: input.paymentMethodId, reference: input.reference, userId: ctx.userId };
+    // Imputation sur ce qui reste dû, du plus ancien au plus récent : ventes à crédit et factures
+    const dueSales = await tx
+      .select({ id: sales.id, dueAmount: sales.dueAmount, paidAmount: sales.paidAmount, at: sales.createdAt })
       .from(sales)
       .where(and(eq(sales.customerId, c.id), eq(sales.status, "completed"), sql`${sales.dueAmount} > 0`))
-      .orderBy(sales.createdAt)
       .for("update");
+    const dueInvoices = await tx
+      .select({ id: invoices.id, total: invoices.total, paidAmount: invoices.paidAmount, at: invoices.createdAt })
+      .from(invoices)
+      .where(and(eq(invoices.customerId, c.id), isNull(invoices.saleId), inArray(invoices.status, ["issued", "partially_paid"]), sql`${invoices.total} > ${invoices.paidAmount}`))
+      .for("update");
+    const open = [
+      ...dueSales.map((x) => ({ kind: "sale" as const, id: x.id, due: x.dueAmount, paid: x.paidAmount, at: x.at })),
+      ...dueInvoices.map((x) => ({ kind: "invoice" as const, id: x.id, due: x.total - x.paidAmount, paid: x.paidAmount, at: x.at, total: x.total })),
+    ].sort((a, b) => a.at.getTime() - b.at.getTime());
+    const d = currencyDecimals(ctx.company.currency);
     let left = amount;
-    for (const s of due) {
+    for (const o of open) {
       if (left <= 0) break;
-      const part = Math.min(left, s.dueAmount);
-      await tx.update(sales).set({ dueAmount: s.dueAmount - part, paidAmount: s.paidAmount + part }).where(eq(sales.id, s.id));
-      await tx.insert(payments).values({ companyId: ctx.companyId, saleId: s.id, customerId: c.id, paymentMethodId: input.paymentMethodId, amount: part, reference: input.reference, userId: ctx.userId });
-      left -= part;
+      const part = round(Math.min(left, o.due), d);
+      if (o.kind === "sale") {
+        const paid = round(o.paid + part, d);
+        await tx.update(sales).set({ dueAmount: round(o.due - part, d), paidAmount: paid }).where(eq(sales.id, o.id));
+        await tx.insert(payments).values({ ...base, saleId: o.id, amount: part });
+        // la facture de la vente suit : payée, en partie payée
+        const [inv] = await tx.select({ id: invoices.id, total: invoices.total, status: invoices.status }).from(invoices).where(eq(invoices.saleId, o.id)).limit(1);
+        if (inv && inv.status !== "cancelled") {
+          await tx.update(invoices).set({ paidAmount: paid, status: paid >= inv.total ? "paid" : "partially_paid" }).where(eq(invoices.id, inv.id));
+        }
+      } else {
+        const paid = round(o.paid + part, d);
+        await tx.update(invoices).set({ paidAmount: paid, status: paid >= o.total! ? "paid" : "partially_paid" }).where(eq(invoices.id, o.id));
+        await tx.insert(payments).values({ ...base, invoiceId: o.id, amount: part });
+      }
+      left = round(left - part, d);
     }
+    // Reste d'une dette saisie à la main (solde d'ouverture) : paiement rattaché au seul client
+    if (left > 0) await tx.insert(payments).values({ ...base, amount: left });
     await tx.update(customers).set({ balanceDue: sql`${customers.balanceDue} - ${amount}` }).where(eq(customers.id, c.id));
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "customer.payment", entityType: "customer", entityId: c.id, metadata: { amount }, ip: ctx.ip });
     return amount;

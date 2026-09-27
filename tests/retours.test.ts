@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { appInstalls, companies, invoices, paymentMethods, taxes } from "@/db/schema";
+import { appInstalls, companies, invoices, paymentMethods, payments, taxes } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import { ALL_COUNTRIES, getCountry, isTimeZone } from "@/lib/countries";
 import { localDate } from "@/lib/dates";
@@ -11,7 +11,12 @@ import { signup } from "@/modules/auth/service";
 import { loadContext } from "@/modules/auth/context";
 import { periodRange } from "@/modules/dashboard/service";
 import { recordInstall } from "@/modules/installs/service";
-import { createManualInvoice, getInvoice, recordInvoicePayment } from "@/modules/invoices/service";
+import { cancelInvoice, createManualInvoice, getInvoice, recordInvoicePayment } from "@/modules/invoices/service";
+import { createCustomer, getCustomer, recordCustomerPayment } from "@/modules/customers/service";
+import { createProduct } from "@/modules/products/service";
+import { createSale } from "@/modules/sales/service";
+import { dashboardStats } from "@/modules/dashboard/service";
+import { salesReport } from "@/modules/reports/service";
 import { setTaxMode, setVisibleModules } from "@/modules/settings/service";
 import { newCompany } from "./helpers";
 
@@ -131,5 +136,38 @@ describe("installations", () => {
     const [row] = await db.select().from(appInstalls).where(eq(appInstalls.installId, id));
     expect(row).toMatchObject({ version: "1.1.0", country: "CI", companyName: "Boutique Abidjan", licensed: true, pings: 2 });
     await expect(recordInstall({ installId: "pas un code" })).rejects.toThrow();
+  });
+});
+
+describe("dette client et chiffre d'affaires", () => {
+  it("le paiement d'un client solde aussi ses factures, du plus ancien au plus récent", async () => {
+    const ctx = await newCompany("Dette Test");
+    const [pm] = await withTenant(ctx, (tx) => tx.select().from(paymentMethods).where(eq(paymentMethods.type, "cash")).limit(1));
+    const customerId = await createCustomer(ctx, { name: "Kodjo" });
+    const pid = await createProduct(ctx, { name: "Riz", salePrice: 10000, initialStock: 5 });
+    const [credit] = await withTenant(ctx, (tx) => tx.select().from(paymentMethods).where(eq(paymentMethods.type, "credit")).limit(1));
+    await createSale(ctx, { customerId, items: [{ productId: pid, quantity: 1 }], payments: [{ paymentMethodId: credit.id, amount: 10000 }] });
+    const invId = await createManualInvoice(ctx, { customerId, items: [{ description: "Réparation", quantity: 1, unitPrice: 45000 }] });
+    expect((await getCustomer(ctx, customerId)).customer.balanceDue).toBe(55000);
+
+    await recordCustomerPayment(ctx, { customerId, paymentMethodId: pm.id, amount: "45 000" });
+    const inv = (await getInvoice(ctx, invId)).invoice;
+    expect(inv).toMatchObject({ paidAmount: 35000, status: "partially_paid" });
+    expect((await getCustomer(ctx, customerId)).customer.balanceDue).toBe(10000);
+    const pays = await withTenant(ctx, (tx) => tx.select().from(payments).where(eq(payments.customerId, customerId)));
+    expect(pays.filter((p) => p.paymentMethodId === pm.id).reduce((s, p) => s + p.amount, 0)).toBe(45000);
+  });
+
+  it("les factures comptent dans le chiffre d'affaires et la TVA", async () => {
+    const ctx = await newCompany("CA Test");
+    await createManualInvoice(ctx, { customerName: "Client", items: [{ description: "Prestation", quantity: 1, unitPrice: 11800, taxRate: 18 }] });
+    const cancelled = await createManualInvoice(ctx, { customerName: "Client", items: [{ description: "Erreur", quantity: 1, unitPrice: 5000 }] });
+    await cancelInvoice(ctx, cancelled, "erreur");
+    const range = { from: new Date(Date.now() - 3600_000), to: new Date(Date.now() + 3600_000) };
+    const stats = await dashboardStats(ctx, range);
+    expect(stats.period).toMatchObject({ revenue: 11800, tax: 1800, count: 1 });
+    const rep = await salesReport(ctx, range);
+    expect(rep.byTax.find((t) => t.rate === 18)?.tax).toBe(1800);
+    expect(rep.byProduct[0]).toMatchObject({ name: "Prestation", revenue: 11800 });
   });
 });

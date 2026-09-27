@@ -84,6 +84,12 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           <Card title="Partager avec le client">
             <ShareInvoice url={publicUrl} number={inv.number} total={m(inv.total)} phone={c?.phone} email={c?.email} companyName={ctx.company.name} />
           </Card>
+          {open && inv.saleId && inv.customerId && (
+            <Card title="Encaisser le reste">
+              <p className="mb-3 text-sm text-slate-600">Cette facture vient d&apos;une vente à crédit : le paiement s&apos;enregistre sur la fiche du client et met cette facture à jour.</p>
+              <Link href={`/customers/${inv.customerId}`} className="btn-primary w-full">Ouvrir la fiche client</Link>
+            </Card>
+          )}
           {canPay && (
             <Card title="Enregistrer un paiement">
               <ActionForm action={invoicePaymentAction.bind(null, inv.id)} className="space-y-3" resetOnSuccess>

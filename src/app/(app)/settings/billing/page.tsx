@@ -1,4 +1,5 @@
 import { ActionForm, SubmitButton } from "@/components/action-form";
+import { getTrade } from "@/lib/trades";
 import { Badge, Card, Field, PageHeader, SelectField } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatQty, TAX_MODES, type TaxMode } from "@/lib/money";
@@ -78,7 +79,7 @@ export default async function BillingSettingsPage() {
         <Card title="Numérotation des documents" className="xl:col-span-2">
           <p className="mb-3 text-xs text-slate-500">Motif : {"{PREFIX}"}, {"{YYYY}"} ou {"{YY}"}, {"{SEQ}"}. Exemple : {"{PREFIX}-{YYYY}-{SEQ}"}.</p>
           <div className="space-y-3">
-            {s.sequences.map((q) => (
+            {s.sequences.filter((q) => q.docType !== "repair_order" || getTrade(ctx.company.businessType).workshop).map((q) => (
               <ActionForm key={q.docType} action={updateSequenceAction} className="grid grid-cols-2 items-end gap-2 sm:grid-cols-12" showOk={false}>
                 <input type="hidden" name="docType" value={q.docType} />
                 <div className="col-span-2 text-sm font-medium sm:col-span-2 sm:pb-2">{DOC_LABELS[q.docType] ?? q.docType}</div>

@@ -1,8 +1,9 @@
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { localDate, requestTimeZone, zonedDay, zonedMidnight } from "@/lib/dates";
-import { customers, expenses, products, saleItems, sales, stockLevels, suppliers } from "@/db/schema";
+import { customers, expenses, products, stockLevels, suppliers } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
+import { documentsInRange, linesInRange } from "@/modules/reports/service";
 import { stockAlerts } from "@/modules/stock/service";
 
 export type PeriodKey = "today" | "yesterday" | "week" | "month" | "last_month" | "year" | "custom";
@@ -52,26 +53,19 @@ export async function dashboardStats(ctx: AppContext, range: { from: Date; to: D
   const startDay = periodRange("today", undefined, new Date(), tz).from;
   const startWeek = periodRange("week", undefined, new Date(), tz).from;
   const startMonth = periodRange("month", undefined, new Date(), tz).from;
-  const done = eq(sales.status, "completed");
 
   return withTenant(ctx, async (tx) => {
-    const revenueSince = (from: Date) =>
-      tx
-        .select({ total: sql<number>`coalesce(sum(${sales.total}), 0)::float8` })
-        .from(sales)
-        .where(and(done, gte(sales.createdAt, from)))
-        .then((r) => r[0].total);
+    // Ventes de caisse et factures saisies à la main (voir documentsInRange)
+    const far = new Date(Date.now() + 86400_000);
+    const revenueSince = async (from: Date) =>
+      ((await tx.execute(sql`select coalesce(sum(d.total), 0)::float8 as total from ${documentsInRange({ from, to: far })} d`)).rows[0] as { total: number }).total;
 
-    const inRange = and(done, gte(sales.createdAt, range.from), lt(sales.createdAt, range.to));
-    const [period] = await tx
-      .select({
-        revenue: sql<number>`coalesce(sum(${sales.total}), 0)::float8`,
-        count: sql<number>`count(*)::int`,
-        cost: sql<number>`coalesce(sum(${sales.costTotal}), 0)::float8`,
-        tax: sql<number>`coalesce(sum(${sales.taxTotal}), 0)::float8`,
-      })
-      .from(sales)
-      .where(inRange);
+    const period = (
+      await tx.execute(sql`
+        select coalesce(sum(d.total), 0)::float8 as revenue, count(*)::int as count,
+               coalesce(sum(d.cost), 0)::float8 as cost, coalesce(sum(d.tax), 0)::float8 as tax
+          from ${documentsInRange(range)} d`)
+    ).rows[0] as { revenue: number; count: number; cost: number; tax: number };
 
     const [exp] = await tx
       .select({ total: sql<number>`coalesce(sum(${expenses.amount}), 0)::float8` })
@@ -93,29 +87,19 @@ export async function dashboardStats(ctx: AppContext, range: { from: Date; to: D
 
     const days = Math.ceil((range.to.getTime() - range.from.getTime()) / 86400_000);
     const bucket = days > 62 ? "month" : "day";
-    const trend = await tx
-      .select({
-        date: sql<string>`to_char(date_trunc(${bucket}, ${sales.createdAt}), 'YYYY-MM-DD')`,
-        revenue: sql<number>`sum(${sales.total})::float8`,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(sales)
-      .where(inRange)
-      .groupBy(sql`1`)
-      .orderBy(sql`1`);
+    const trend = (
+      await tx.execute(sql`
+        select to_char(date_trunc(${bucket}, d.at), 'YYYY-MM-DD') as date, sum(d.total)::float8 as revenue, count(*)::int as count
+          from ${documentsInRange(range)} d
+         group by 1 order by 1`)
+    ).rows as { date: string; revenue: number; count: number }[];
 
-    const top = await tx
-      .select({
-        name: saleItems.name,
-        quantity: sql<number>`sum(${saleItems.quantity})::float8`,
-        revenue: sql<number>`sum(${saleItems.lineTotal})::float8`,
-      })
-      .from(saleItems)
-      .innerJoin(sales, eq(sales.id, saleItems.saleId))
-      .where(inRange)
-      .groupBy(saleItems.name)
-      .orderBy(desc(sql`sum(${saleItems.lineTotal})`))
-      .limit(5);
+    const top = (
+      await tx.execute(sql`
+        select l.name, sum(l.quantity)::float8 as quantity, sum(l.line_total)::float8 as revenue
+          from ${linesInRange(range)} l
+         group by l.name order by sum(l.line_total) desc limit 5`)
+    ).rows as { name: string; quantity: number; revenue: number }[];
 
     const alerts = await stockAlerts(ctx, 8);
     const outOfStock = alerts.low.filter((p) => p.quantity <= 0);
