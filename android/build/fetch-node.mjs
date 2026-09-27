@@ -115,6 +115,14 @@ async function forAbi(abi) {
   const node = path.join(usr, "bin/node");
   if (!existsSync(node)) throw new Error("node absent du paquet nodejs-lts");
   place(realpathSync(node), "libzn_node.so", false);
+  // Diagnostic (CI) : copie telle quelle du Node de Termux, pour la comparer à la version reliée par patchelf
+  if (process.env.ZE_KEEP_RAW) {
+    const raw = path.join(process.env.ZE_KEEP_RAW, abi);
+    rmSync(raw, { recursive: true, force: true });
+    mkdirSync(path.join(raw, "lib"), { recursive: true });
+    copyFileSync(realpathSync(node), path.join(raw, "node"));
+    for (const [name, real] of bySoname) copyFileSync(real, path.join(raw, "lib", name));
+  }
   const files = readdirSync(out);
   console.log(`${abi} : ${files.length} fichiers dans jniLibs (${files.join(" ")})`);
   rmSync(work, { recursive: true, force: true });

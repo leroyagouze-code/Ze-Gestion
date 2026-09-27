@@ -22,6 +22,19 @@ grep -E "ZEGestion|AndroidRuntime|FATAL" "$OUT/logcat.txt" | tail -80
 if [ "$ok" != 1 ]; then
   echo "::error::ZE Gestion n'a pas démarré sur le téléphone virtuel"
   adb exec-out screencap -p > "$OUT/ecran-echec.png"
+  echo "--- Plantages (logcat crash)"
+  adb logcat -d -b crash | tail -60
+  # Node lancé à la main : version de l'APK (reliée par patchelf), puis version d'origine de Termux
+  LIB=$(adb shell pm dump "$PKG" | grep -m1 "nativeLibraryDir=" | sed 's/.*nativeLibraryDir=//' | tr -d '\r')
+  echo "--- Node de l'APK ($LIB)"
+  adb shell "ls -la $LIB | head -40"
+  adb shell "LD_LIBRARY_PATH=$LIB $LIB/libzn_node.so -e 'console.log(process.version, new Intl.NumberFormat(\"fr-FR\").format(1234567))'; echo code=\$?"
+  RAW="$(dirname "$APK")/raw/x86_64"
+  if [ -d "$RAW" ]; then
+    echo "--- Node d'origine de Termux"
+    adb push "$RAW" /data/local/tmp/raw > /dev/null
+    adb shell "chmod 755 /data/local/tmp/raw/node; LD_LIBRARY_PATH=/data/local/tmp/raw/lib /data/local/tmp/raw/node -e 'console.log(process.version)'; echo code=\$?"
+  fi
   exit 1
 fi
 echo "Démarré en $((i * 2)) s environ"

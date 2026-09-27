@@ -40,7 +40,7 @@ jobs:
       - name: Récupérer Node pour Android
         run: |
           sudo apt-get install -y -q patchelf
-          node android/build/fetch-node.mjs
+          ZE_KEEP_RAW=$GITHUB_WORKSPACE/android/dist/raw node android/build/fetch-node.mjs
 
       - uses: actions/setup-java@v4
         with:
@@ -74,7 +74,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: apk-x86_64
-          path: android/dist/*x86_64.apk
+          path: |
+            android/dist/*x86_64.apk
+            android/dist/raw/x86_64
           retention-days: 3
       - name: Journaux en cas d'échec
         if: failure()
