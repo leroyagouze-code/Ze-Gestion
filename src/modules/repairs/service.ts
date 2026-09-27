@@ -31,7 +31,7 @@ export type RepairStatus = keyof typeof REPAIR_STATUS;
 const optInt = z.preprocess(
   (v) => (v === "" || v === null || v === undefined ? null : Number(String(v).replace(/\s/g, ""))),
   z.number().int("Nombre entier attendu").min(0).max(10_000_000).nullable(),
-);
+).optional();
 const optDate = z
   .string()
   .nullish()
@@ -206,7 +206,7 @@ export const repairItemSchema = z.object({
   productId: z.string().uuid().nullish().or(z.literal("").transform(() => null)),
   description: optText(300),
   quantity: num.pipe(z.number().positive("Quantité invalide").max(100_000)),
-  unitPrice: z.preprocess((v) => (v === "" || v === undefined ? null : v), num.pipe(z.number().min(0)).nullable()),
+  unitPrice: z.preprocess((v) => (v === "" || v === undefined ? null : v), num.pipe(z.number().min(0)).nullable()).optional(),
 });
 
 export async function addRepairItem(ctx: AppContext, orderId: string, raw: z.input<typeof repairItemSchema>) {
@@ -226,7 +226,7 @@ export async function addRepairItem(ctx: AppContext, orderId: string, raw: z.inp
       unitPrice = unitPrice ?? p.promoPrice ?? p.salePrice;
     } else {
       if (!description) throw new BusinessError("Décrivez le travail effectué");
-      if (unitPrice === null) throw new BusinessError("Indiquez le prix de la main-d'œuvre");
+      if (unitPrice == null) throw new BusinessError("Indiquez le prix de la main-d'œuvre");
     }
     await tx.insert(repairOrderItems).values({ companyId: ctx.companyId, repairOrderId: orderId, kind: input.kind, productId, description: description!, quantity: input.quantity, unitPrice: unitPrice! });
     await tx.update(repairOrders).set({ updatedAt: new Date(), status: sql`case when ${repairOrders.status} = 'open' then 'in_progress'::repair_status else ${repairOrders.status} end` }).where(eq(repairOrders.id, orderId));
