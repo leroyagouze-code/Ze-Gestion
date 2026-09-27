@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { subscriptions } from "@/db/schema";
 import { can } from "@/lib/permissions";
-import { extendTrial, setCompanyPlan } from "@/modules/admin/service";
+import { extendTrial, recordSubscriptionPayment } from "@/modules/admin/service";
 import { loadContext, type AppContext } from "@/modules/auth/context";
 import { computeState } from "@/modules/billing/access";
 import { createProduct, listProducts } from "@/modules/products/service";
@@ -49,7 +49,7 @@ describe("fin de l'essai", () => {
 
     await db.update(subscriptions).set({ trialEndsAt: sql`now() - interval '1 hour'` }).where(eq(subscriptions.companyId, ctx.companyId));
     const [basic] = (await db.execute<{ id: string }>(sql`select id from plans where code = 'BASIC'`)).rows;
-    await setCompanyPlan(superAdmin, ctx.companyId, basic.id);
+    await recordSubscriptionPayment(superAdmin, ctx.companyId, { planId: basic.id, months: 1, amount: 5000, method: "tmoney" });
     const paid = await reload(ctx);
     expect(paid.subscription).toMatchObject({ readOnly: false, status: "active", planName: "Basic" });
     await createSale(paid, sale);

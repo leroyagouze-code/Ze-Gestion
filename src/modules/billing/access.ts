@@ -6,32 +6,52 @@ import { ALL_PERMISSIONS, type Permission } from "@/lib/permissions";
 export type SubscriptionState = {
   planName: string | null;
   status: string | null;
+  unlimited: boolean;
   trialEndsAt: Date | null;
   /** Jours d'essai restants (arrondis au-dessus), null hors période d'essai. */
   trialDaysLeft: number | null;
-  /** Essai terminé sans formule payée, ou abonnement impayé / arrêté : consultation seulement. */
+  /** Fin de la période payée (null : sans date de fin). */
+  periodEndsAt: Date | null;
+  periodDaysLeft: number | null;
+  /** Période payée dépassée sans renouvellement. */
+  expired: boolean;
+  /** Essai terminé, période payée dépassée, ou abonnement impayé / arrêté : consultation seulement. */
   readOnly: boolean;
 };
 
+type SubRow = { status: string; trialEndsAt: Date | null; planName: string; currentPeriodEnd?: Date | null; unlimited?: boolean };
+
 const DAY = 86_400_000;
 const BLOCKING = new Set(["past_due", "suspended", "canceled"]);
+const daysLeft = (end: Date, now: Date) => Math.ceil((end.getTime() - now.getTime()) / DAY);
 
-export function computeState(sub: { status: string; trialEndsAt: Date | null; planName: string } | undefined, now = new Date()): SubscriptionState {
-  if (!sub) return { planName: null, status: null, trialEndsAt: null, trialDaysLeft: null, readOnly: false };
-  const trialing = sub.status === "trialing";
-  const trialOver = trialing && sub.trialEndsAt !== null && sub.trialEndsAt.getTime() <= now.getTime();
-  return {
-    planName: sub.planName,
-    status: sub.status,
-    trialEndsAt: sub.trialEndsAt,
-    trialDaysLeft: trialing && sub.trialEndsAt && !trialOver ? Math.ceil((sub.trialEndsAt.getTime() - now.getTime()) / DAY) : null,
-    readOnly: trialOver || BLOCKING.has(sub.status),
-  };
+export function computeState(sub: SubRow | undefined, now = new Date()): SubscriptionState {
+  const base = { planName: null, status: null, unlimited: false, trialEndsAt: null, trialDaysLeft: null, periodEndsAt: null, periodDaysLeft: null, expired: false, readOnly: false };
+  if (!sub) return base;
+  const common = { ...base, planName: sub.planName, status: sub.status, trialEndsAt: sub.trialEndsAt, periodEndsAt: sub.currentPeriodEnd ?? null };
+  // Accès offert : rien n'expire, seule une suspension explicite de l'entreprise l'arrête
+  if (sub.unlimited) return { ...common, unlimited: true };
+  if (sub.status === "trialing") {
+    const over = sub.trialEndsAt !== null && sub.trialEndsAt.getTime() <= now.getTime();
+    return { ...common, trialDaysLeft: sub.trialEndsAt && !over ? daysLeft(sub.trialEndsAt, now) : null, readOnly: over };
+  }
+  if (sub.status === "active") {
+    const end = sub.currentPeriodEnd ?? null;
+    const expired = end !== null && end.getTime() <= now.getTime();
+    return { ...common, periodDaysLeft: end && !expired ? daysLeft(end, now) : null, expired, readOnly: expired };
+  }
+  return { ...common, readOnly: BLOCKING.has(sub.status) };
 }
 
 export async function subscriptionState(companyId: string): Promise<SubscriptionState> {
   const [sub] = await db
-    .select({ status: subscriptions.status, trialEndsAt: subscriptions.trialEndsAt, planName: plans.name })
+    .select({
+      status: subscriptions.status,
+      trialEndsAt: subscriptions.trialEndsAt,
+      currentPeriodEnd: subscriptions.currentPeriodEnd,
+      unlimited: subscriptions.unlimited,
+      planName: plans.name,
+    })
     .from(subscriptions)
     .innerJoin(plans, eq(plans.id, subscriptions.planId))
     .where(eq(subscriptions.companyId, companyId))

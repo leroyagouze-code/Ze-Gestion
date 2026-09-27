@@ -57,13 +57,13 @@ export async function listMembers(ctx: AppContext) {
 
 async function enforceUserLimit(ctx: AppContext) {
   const [row] = await db
-    .select({ limits: plans.limits })
+    .select({ limits: plans.limits, unlimited: subscriptions.unlimited })
     .from(subscriptions)
     .innerJoin(plans, eq(plans.id, subscriptions.planId))
     .where(eq(subscriptions.companyId, ctx.companyId))
     .orderBy(desc(subscriptions.createdAt))
     .limit(1);
-  const max = row?.limits.maxUsers;
+  const max = row?.unlimited ? null : row?.limits.maxUsers;
   if (max == null) return;
   const [{ count }] = await withTenant(ctx, (tx) =>
     tx.select({ count: sql<number>`count(*)::int` }).from(memberships).where(and(eq(memberships.companyId, ctx.companyId), eq(memberships.isActive, true))),

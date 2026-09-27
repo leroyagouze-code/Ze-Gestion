@@ -1,6 +1,7 @@
 import { AppShell, type NavItem } from "@/components/nav";
 import { requireContext } from "@/lib/auth/server";
 import type { AppContext } from "@/modules/auth/context";
+import { formatDate } from "@/lib/dates";
 import { can, type Permission } from "@/lib/permissions";
 import { logoutAction } from "../(auth)/actions";
 
@@ -27,7 +28,12 @@ function SubscriptionBanner({ state, isAdmin }: { state: AppContext["subscriptio
     return (
       <div className="no-print mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <b>Compte en lecture seule.</b>{" "}
-        {state.status === "trialing" ? "La période d'essai gratuite est terminée." : "L'abonnement n'est plus actif."} Vos données restent
+        {state.status === "trialing"
+          ? "La période d'essai gratuite est terminée."
+          : state.expired
+            ? `L'abonnement a expiré le ${formatDate(state.periodEndsAt!)}.`
+            : "L'abonnement n'est plus actif."}{" "}
+        Vos données restent
         consultables et exportables, mais les ventes et les modifications sont suspendues. Pour choisir une formule, contactez {SUPPORT}.
       </div>
     );
@@ -38,6 +44,14 @@ function SubscriptionBanner({ state, isAdmin }: { state: AppContext["subscriptio
       <div className="no-print mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
         Essai gratuit : {state.trialDaysLeft === 1 ? "dernier jour" : `${state.trialDaysLeft} jours restants`}. Ensuite, le compte passera en
         lecture seule jusqu&apos;au choix d&apos;une formule. Contactez {SUPPORT}.
+      </div>
+    );
+  }
+  if (isAdmin && state.periodDaysLeft !== null && state.periodDaysLeft <= 7) {
+    return (
+      <div className="no-print mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
+        Votre abonnement {state.planName} se termine le {formatDate(state.periodEndsAt!)}. Pensez à le renouveler auprès de {SUPPORT} pour
+        éviter le passage en lecture seule.
       </div>
     );
   }
