@@ -2,9 +2,19 @@ import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@
 import type { companies, invoiceItems, invoices, saleItems, sales } from "@/db/schema";
 import { formatDate } from "@/lib/dates";
 import { formatMoney, formatQty } from "@/lib/money";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { APP_NAME, APP_PUBLISHER } from "@/lib/brand";
 import { readStoredFile } from "@/lib/storage";
 
 type Company = typeof companies.$inferSelect;
+
+let brandTile: Promise<Buffer | null> | null = null;
+/** Petit logo ZE GROUP du pied de page (lu une seule fois). */
+function brandLogo() {
+  brandTile ??= readFile(path.join(process.cwd(), "public/brand/ze-tile.png")).catch(() => null);
+  return brandTile;
+}
 
 async function logoSrc(company: Company) {
   if (!company.logoUrl) return null;
@@ -22,13 +32,14 @@ const s = StyleSheet.create({
   muted: { color: "#64748b" },
   th: { fontFamily: "Helvetica-Bold", color: "#ffffff", paddingVertical: 5, paddingHorizontal: 4 },
   td: { paddingVertical: 5, paddingHorizontal: 4, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0" },
-  footer: { position: "absolute", bottom: 24, left: 36, right: 36, textAlign: "center", fontSize: 8, color: "#64748b" },
+  footer: { position: "absolute", bottom: 30, left: 36, right: 36, textAlign: "center", fontSize: 8, color: "#64748b" },
+  brand: { position: "absolute", bottom: 14, left: 36, right: 36, flexDirection: "row", justifyContent: "center", alignItems: "center", fontSize: 6.5, color: "#94a3b8" },
 });
 
 const cols = { desc: "42%", qty: "10%", pu: "16%", disc: "10%", tax: "8%", total: "14%" };
 
 export async function invoicePdf(company: Company, invoice: typeof invoices.$inferSelect, items: (typeof invoiceItems.$inferSelect)[]) {
-  const logo = await logoSrc(company);
+  const [logo, brand] = await Promise.all([logoSrc(company), brandLogo()]);
   const m = (v: number) => formatMoney(v, company.currency);
   const c = invoice.customerSnapshot;
   const color = company.brandColor || "#0f766e";
@@ -109,6 +120,10 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
         <Text style={s.footer} fixed>
           {company.invoiceFooter || [company.name, company.address, company.phone, company.taxId && `N° fiscal ${company.taxId}`].filter(Boolean).join(" · ")}
         </Text>
+        <View style={s.brand} fixed>
+          {brand && <Image src={{ data: brand, format: "png" }} style={{ width: 8, height: 8, marginRight: 3 }} />}
+          <Text>Édité avec {APP_NAME} · {APP_PUBLISHER}</Text>
+        </View>
       </Page>
     </Document>
   );
@@ -163,6 +178,7 @@ export async function receiptPdf(
         {sale.dueAmount > 0 && <View style={s.between}><Text style={s.bold}>Reste dû</Text><Text style={s.bold}>{m(sale.dueAmount)}</Text></View>}
         <View style={t.line} />
         <Text style={t.c}>{company.invoiceFooter || "Merci pour votre achat !"}</Text>
+        <Text style={[t.c, { fontSize: 6, marginTop: 4, color: "#555" }]}>Logiciel {APP_NAME} · {APP_PUBLISHER}</Text>
       </Page>
     </Document>
   );
