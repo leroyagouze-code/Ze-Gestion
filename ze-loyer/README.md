@@ -71,6 +71,8 @@ Aucune clé Mobile Money, SMS, WhatsApp ou email n'est nécessaire : ces intégr
 
 ## Déploiement
 
+**Mise en ligne guidée sur https://loyer.zegroupafrica.com (Render + Neon)** : [`docs/MISE-EN-LIGNE.md`](docs/MISE-EN-LIGNE.md).
+
 1. **Base** : PostgreSQL 16 managé (Neon, Supabase, Scaleway, OVH…) avec **sauvegardes automatiques quotidiennes** activées.
 2. **Application**, au choix :
    - **Docker** : `docker build -t ze-loyer .` puis `docker run -p 3000:3000 -e DATABASE_URL=… -e APP_URL=… -e CRON_SECRET=… -v zl-uploads:/data/uploads ze-loyer`. Placez-la derrière un proxy **HTTPS** (Caddy, Traefik, Nginx + Let's Encrypt).
