@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { runAction, type ActionState } from "@/lib/actions";
 import { requireContext } from "@/lib/auth/server";
+import { ctxAssert } from "@/modules/auth/context";
 import { putFile } from "@/lib/storage";
 import { formToObject } from "@/lib/zod";
 import { addPaymentMethod, saveTax, togglePaymentMethod, updateCompany, updateSequence } from "@/modules/settings/service";
@@ -11,6 +12,7 @@ export async function updateCompanyAction(_: ActionState, fd: FormData): Promise
   const ctx = await requireContext();
   const res = await runAction(async () => {
     const file = fd.get("logo");
+    ctxAssert(ctx, "settings.manage"); // droits vérifiés avant d'écrire sur le disque
     const logoUrl = file instanceof File && file.size > 0 ? await putFile(ctx.companyId, file, { imagesOnly: true }) : undefined;
     await updateCompany(ctx, formToObject(fd) as never, logoUrl);
     return "Paramètres enregistrés";

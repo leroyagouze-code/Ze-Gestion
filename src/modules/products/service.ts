@@ -1,7 +1,10 @@
 import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { contains } from "@/lib/search";
 import type { Tx } from "@/db";
 import { brands, categories, products, suppliers, taxes } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
+import { assertOwned } from "@/db/owned";
+import { isOwnFileUrl } from "@/lib/storage";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
@@ -34,7 +37,7 @@ export async function listProducts(ctx: AppContext, opts: { q?: string; page?: n
     const conds = [eq(products.isActive, true)];
     if (opts.q) {
       const q = opts.q.trim();
-      conds.push(or(ilike(products.name, `%${q}%`), eq(products.sku, q), eq(products.barcode, q), eq(products.reference, q))!);
+      conds.push(or(ilike(products.name, contains(q)), eq(products.sku, q), eq(products.barcode, q), eq(products.reference, q))!);
     }
     if (opts.categoryId) conds.push(eq(products.categoryId, opts.categoryId));
     const where = and(...conds);
@@ -100,7 +103,14 @@ export async function productFormOptions(ctx: AppContext) {
   }));
 }
 
+async function assertRefs(tx: Tx, ctx: AppContext, input: { taxId?: string | null; supplierId?: string | null; imageUrl?: string | null }) {
+  if (input.imageUrl && !isOwnFileUrl(input.imageUrl, ctx.companyId, "public")) throw new BusinessError("Image invalide");
+  await assertOwned(tx, taxes, input.taxId, "Taxe");
+  await assertOwned(tx, suppliers, input.supplierId, "Fournisseur");
+}
+
 async function createInTx(tx: Tx, ctx: AppContext, input: ReturnType<typeof productSchema.parse>) {
+  await assertRefs(tx, ctx, input);
   const categoryId = await upsertNamed(tx, ctx.companyId, categories, input.categoryName);
   const brandId = await upsertNamed(tx, ctx.companyId, brands, input.brandName);
   const [p] = await tx
@@ -159,6 +169,7 @@ export async function updateProduct(ctx: AppContext, id: string, raw: ProductInp
   return withTenant(ctx, async (tx) => {
     const [before] = await tx.select().from(products).where(eq(products.id, id));
     if (!before) throw new NotFoundError("Produit");
+    await assertRefs(tx, ctx, input);
     const canCost = ctxCan(ctx, "products.cost");
     const categoryId = await upsertNamed(tx, ctx.companyId, categories, input.categoryName);
     const brandId = await upsertNamed(tx, ctx.companyId, brands, input.brandName);
@@ -235,7 +246,7 @@ export async function searchForPos(ctx: AppContext, q: string, limit = 20) {
       .limit(limit);
     if (exact.length) return exact;
     return base()
-      .where(and(eq(products.isActive, true), ilike(products.name, `%${term}%`)))
+      .where(and(eq(products.isActive, true), ilike(products.name, contains(term))))
       .orderBy(sql`similarity(${products.name}, ${term}) desc`)
       .limit(limit);
   });

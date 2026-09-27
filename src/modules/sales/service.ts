@@ -15,7 +15,7 @@ import {
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
-import { computeTotals, currencyDecimals, round } from "@/lib/money";
+import { computeTotals, currencyDecimals, lineDiscount, round } from "@/lib/money";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
 import { nextDocumentNumber } from "@/modules/settings/sequences";
@@ -127,7 +127,7 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         name: l.p.name,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
-        discount: l.discount,
+        discount: lineDiscount(l),
         taxRate: l.taxRate,
         taxAmount: totals.lines[idx].taxAmount,
         lineTotal: totals.lines[idx].lineTotal,
@@ -135,18 +135,26 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       })),
     );
 
+    // Verrous de stock toujours pris dans le même ordre (par produit) : pas d'interblocage entre ventes simultanées
+    const byProduct = new Map<string, { name: string; quantity: number }>();
     for (const l of lines) {
-      await applyMovement(tx, ctx, {
+      const cur = byProduct.get(l.p.id);
+      byProduct.set(l.p.id, { name: l.p.name, quantity: (cur?.quantity ?? 0) + l.quantity });
+    }
+    for (const [productId, { name, quantity }] of [...byProduct.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      const after = await applyMovement(tx, ctx, {
         storeId: ctx.storeId,
-        productId: l.p.id,
+        productId,
         type: "sale",
-        quantity: -l.quantity,
+        quantity: -quantity,
         referenceType: "sale",
         referenceId: sale.id,
         reason: number,
       });
+      if (after < 0 && !ctx.company.allowNegativeStock) {
+        throw new BusinessError(`Stock insuffisant pour « ${name} » : ${Math.round((after + quantity) * 1000) / 1000} disponible(s)`);
+      }
     }
-
     // Répartit le montant encaissé entre les moyens de paiement (la monnaie est retirée du dernier)
     let remaining = paid;
     for (const p of tendered) {

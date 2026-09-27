@@ -26,5 +26,5 @@ export type SignupInput = z.input<typeof signupSchema>;
 
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email("Email invalide"),
-  password: z.string().min(1, "Mot de passe requis"),
+  password: z.string().min(1, "Mot de passe requis").max(200, "Mot de passe trop long"),
 });

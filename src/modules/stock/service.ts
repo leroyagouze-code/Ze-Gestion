@@ -1,8 +1,10 @@
 import { and, desc, eq, lte, sql, isNotNull } from "drizzle-orm";
+import { contains } from "@/lib/search";
 import { z } from "zod";
 import type { Tx } from "@/db";
 import { products, stockLevels, stockMovements, stores, users } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
+import { assertOwned } from "@/db/owned";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
@@ -74,6 +76,7 @@ export async function recordManualMovement(ctx: AppContext, raw: z.input<typeof 
   const input = movementSchema.parse(raw);
   const storeId = input.storeId ?? ctx.storeId;
   return withTenant(ctx, async (tx) => {
+    await assertOwned(tx, stores, storeId, "Boutique");
     const [p] = await tx.select({ id: products.id, name: products.name }).from(products).where(eq(products.id, input.productId));
     if (!p) throw new NotFoundError("Produit");
     let delta: number;
@@ -96,6 +99,9 @@ export async function recordManualMovement(ctx: AppContext, raw: z.input<typeof 
       reason: input.reason,
       unitCost: input.unitCost ?? null,
     });
+    if (after < 0 && delta < 0 && !ctx.company.allowNegativeStock) {
+      throw new BusinessError(`Stock insuffisant : ${Math.round((after - delta) * 1000) / 1000} disponible(s)`);
+    }
     await audit(tx, {
       companyId: ctx.companyId,
       userId: ctx.userId,
@@ -123,7 +129,7 @@ export async function listStock(
   return withTenant(ctx, async (tx) => {
     const qtyExpr = sql<number>`coalesce(${stockLevels.quantity}, 0)::float8`;
     const conds = [eq(products.isActive, true)];
-    if (opts.q) conds.push(sql`(${products.name} ilike ${"%" + opts.q + "%"} or ${products.sku} = ${opts.q} or ${products.barcode} = ${opts.q})`);
+    if (opts.q) conds.push(sql`(${products.name} ilike ${contains(opts.q)} or ${products.sku} = ${opts.q} or ${products.barcode} = ${opts.q})`);
     if (opts.filter === "low") conds.push(sql`${qtyExpr} > 0 and ${qtyExpr} <= ${products.minStock}`);
     if (opts.filter === "out") conds.push(sql`${qtyExpr} <= 0`);
     const where = and(...conds);

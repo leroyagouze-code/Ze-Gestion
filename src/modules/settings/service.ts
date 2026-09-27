@@ -27,6 +27,8 @@ export const companySchema = z.object({
   invoiceFooter: optText(1000),
   invoiceFormat: z.enum(["A4", "A5"]),
   receiptFormat: z.enum(["58mm", "80mm", "A4"]),
+  // Case à cocher : présente (« on ») ou absente du formulaire
+  allowNegativeStock: z.preprocess((v) => v === "on" || v === true || v === "true", z.boolean()),
 });
 
 export async function updateCompany(ctx: AppContext, raw: z.input<typeof companySchema>, logoUrl?: string) {

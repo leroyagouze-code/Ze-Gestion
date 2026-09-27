@@ -1,7 +1,9 @@
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { contains } from "@/lib/search";
 import { z } from "zod";
 import { customers, invoices, payments, paymentMethods, sales } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
+import { assertCollectMethod } from "@/db/owned";
 import { audit } from "@/lib/audit";
 import { NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
@@ -30,7 +32,7 @@ export async function listCustomers(ctx: AppContext, opts: { q?: string; page?: 
   const { limit, offset, page } = pageParams(opts.page);
   return withTenant(ctx, async (tx) => {
     const conds = [];
-    if (opts.q) conds.push(or(ilike(customers.name, `%${opts.q}%`), ilike(customers.phone, `%${opts.q}%`), ilike(customers.companyName, `%${opts.q}%`)));
+    if (opts.q) conds.push(or(ilike(customers.name, contains(opts.q)), ilike(customers.phone, contains(opts.q)), ilike(customers.companyName, contains(opts.q))));
     if (opts.withDebt) conds.push(sql`${customers.balanceDue} > 0`);
     const where = conds.length ? and(...conds) : undefined;
     const rows = await tx.select().from(customers).where(where).orderBy(customers.name).limit(limit).offset(offset);
@@ -101,6 +103,7 @@ export async function recordCustomerPayment(ctx: AppContext, raw: z.input<typeof
   return withTenant(ctx, async (tx) => {
     const [c] = await tx.select().from(customers).where(eq(customers.id, input.customerId)).for("update");
     if (!c) throw new NotFoundError("Client");
+    await assertCollectMethod(tx, input.paymentMethodId);
     const amount = Math.min(input.amount, c.balanceDue);
     if (amount <= 0) return 0;
     // Imputation sur les ventes les plus anciennes restant dues

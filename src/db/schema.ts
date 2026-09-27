@@ -75,6 +75,7 @@ export const companies = pgTable("companies", {
   invoiceFooter: text("invoice_footer"),
   invoiceFormat: text("invoice_format").notNull().default("A4"),
   receiptFormat: text("receipt_format").notNull().default("80mm"),
+  allowNegativeStock: boolean("allow_negative_stock").notNull().default(false),
   locale: text("locale").notNull().default("fr"),
   timezone: text("timezone").notNull().default("Africa/Lome"),
   status: companyStatus("status").notNull().default("active"),
@@ -102,6 +103,8 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   phone: text("phone"),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: createdAt(),
 });

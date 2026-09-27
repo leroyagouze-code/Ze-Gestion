@@ -1,4 +1,5 @@
 import { desc, eq, ilike, or, sql } from "drizzle-orm";
+import { contains } from "@/lib/search";
 import { z } from "zod";
 import { products, stockMovements, suppliers } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
@@ -28,7 +29,7 @@ export async function listSuppliers(ctx: AppContext, opts: { q?: string; page?: 
   ctxAssert(ctx, "suppliers.view");
   const { limit, offset, page } = pageParams(opts.page);
   return withTenant(ctx, async (tx) => {
-    const where = opts.q ? or(ilike(suppliers.name, `%${opts.q}%`), ilike(suppliers.phone, `%${opts.q}%`)) : undefined;
+    const where = opts.q ? or(ilike(suppliers.name, contains(opts.q)), ilike(suppliers.phone, contains(opts.q))) : undefined;
     const rows = await tx
       .select({
         id: suppliers.id,
