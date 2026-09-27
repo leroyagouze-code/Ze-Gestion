@@ -1,11 +1,12 @@
 import { desc, eq, ilike, or, sql } from "drizzle-orm";
+import { contains } from "@/lib/search";
 import { z } from "zod";
 import { products, stockMovements, suppliers } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
-import { optText } from "@/lib/zod";
+import { num, optText } from "@/lib/zod";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
 
 export const supplierSchema = z.object({
@@ -20,7 +21,7 @@ export const supplierSchema = z.object({
     .pipe(z.string().email("Email invalide").nullable()),
   address: optText(500),
   notes: optText(2000),
-  balanceDue: z.coerce.number().min(0).optional(),
+  balanceDue: num().optional(),
 });
 export type SupplierInput = z.input<typeof supplierSchema>;
 
@@ -28,7 +29,7 @@ export async function listSuppliers(ctx: AppContext, opts: { q?: string; page?: 
   ctxAssert(ctx, "suppliers.view");
   const { limit, offset, page } = pageParams(opts.page);
   return withTenant(ctx, async (tx) => {
-    const where = opts.q ? or(ilike(suppliers.name, `%${opts.q}%`), ilike(suppliers.phone, `%${opts.q}%`)) : undefined;
+    const where = opts.q ? or(ilike(suppliers.name, contains(opts.q)), ilike(suppliers.phone, contains(opts.q))) : undefined;
     const rows = await tx
       .select({
         id: suppliers.id,

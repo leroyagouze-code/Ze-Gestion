@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
 import { Camera, Minus, Plus, ScanLine, Trash2, X } from "lucide-react";
-import { computeTotals, formatMoney, formatQty } from "@/lib/money";
+import { computeTotals, formatMoney, formatQty, type TaxMode } from "@/lib/money";
 import { createSaleAction } from "./actions";
 
 type Product = {
@@ -19,20 +19,27 @@ type Product = {
 };
 type Line = { product: Product; quantity: number; discount: number };
 type Method = { id: string; label: string; type: string };
-type Pay = { paymentMethodId: string; amount: string; reference: string };
+/** auto : montant rempli par la caisse, qui suit le total tant que le caissier ne le modifie pas. */
+type Pay = { paymentMethodId: string; amount: string; reference: string; auto?: boolean };
 
 const price = (p: Product) => (p.promoPrice != null && p.promoPrice > 0 ? p.promoPrice : p.salePrice);
 
 export function Pos({
   currency,
   decimals,
+  taxMode = "line",
   paymentMethods,
   customers,
+  canDiscount,
+  canInvoice,
 }: {
   currency: string;
   decimals: number;
+  taxMode?: TaxMode;
   paymentMethods: Method[];
   customers: { id: string; name: string; phone: string | null }[];
+  canDiscount: boolean;
+  canInvoice: boolean;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Product[]>([]);
@@ -86,8 +93,9 @@ export function Pos({
         cart.map((l) => ({ quantity: l.quantity, unitPrice: price(l.product), discount: l.discount, taxRate: l.product.taxRate })),
         Number(discount.replace(",", ".")) || 0,
         decimals,
+        taxMode,
       ),
-    [cart, discount, decimals],
+    [cart, discount, decimals, taxMode],
   );
 
   const tendered = pays.reduce((s, p) => s + (Number(p.amount.replace(/\s/g, "").replace(",", ".")) || 0), 0);
@@ -100,10 +108,15 @@ export function Pos({
 
   function pickMethod(id: string) {
     setPays((ps) => {
-      if (ps.length <= 1) return [{ paymentMethodId: id, amount: String(totals.total), reference: "" }];
+      if (ps.length <= 1) return [{ paymentMethodId: id, amount: String(totals.total), reference: "", auto: true }];
       return ps;
     });
   }
+
+  // Le panier change après le choix du moyen de paiement : le montant rempli automatiquement suit
+  useEffect(() => {
+    setPays((ps) => (ps.length === 1 && ps[0].auto && ps[0].amount !== String(totals.total) ? [{ ...ps[0], amount: String(totals.total) }] : ps));
+  }, [totals.total]);
 
   function reset() {
     setCart([]);
@@ -156,10 +169,10 @@ export function Pos({
                 <div className="truncate text-sm font-medium">{l.product.name}</div>
                 <div className="text-xs text-slate-500">{m(price(l.product))} / {l.product.unit}</div>
               </div>
-              <div className="text-right text-sm font-semibold">{m(totals.lines[i]?.lineTotal ?? 0)}</div>
+              <div className="text-right text-sm font-semibold">{m((taxMode === "total" ? totals.lines[i]?.net : totals.lines[i]?.lineTotal) ?? 0)}</div>
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, quantity: Math.max(x.quantity - 1, 0.001) } : x)))}><Minus size={16} /></button>
+              <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => (l.quantity <= 1 ? c.filter((_, j) => j !== i) : c.map((x, j) => (j === i ? { ...x, quantity: x.quantity - 1 } : x))))}><Minus size={16} /></button>
               <input
                 className="input h-9 w-20 text-center"
                 inputMode="decimal"
@@ -170,27 +183,27 @@ export function Pos({
                 }}
               />
               <button className="btn-secondary h-9 w-9 p-0" aria-label="Plus" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x)))}><Plus size={16} /></button>
-              <input
+              {canDiscount && <input
                 className="input h-9 w-24"
                 placeholder="Remise"
                 inputMode="decimal"
                 value={l.discount || ""}
                 onChange={(e) => setCart((c) => c.map((x, j) => (j === i ? { ...x, discount: Number(e.target.value.replace(",", ".")) || 0 } : x)))}
-              />
+              />}
               <button className="btn-ghost ml-auto h-9 w-9 p-0 text-red-600" aria-label="Retirer" onClick={() => setCart((c) => c.filter((_, j) => j !== i))}><Trash2 size={16} /></button>
             </div>
           </div>
         ))}
       </div>
       <div className="space-y-3 border-t border-slate-200 p-4">
-        <div className="grid grid-cols-2 gap-2">
+        <div className={clsx("grid gap-2", canDiscount ? "grid-cols-2" : "grid-cols-1")}>
           <select className="input" value={customerId} onChange={(e) => setCustomerId(e.target.value)} aria-label="Client">
             <option value="">Client comptoir</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ""}</option>
             ))}
           </select>
-          <input className="input" placeholder="Remise globale" inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+          {canDiscount && <input className="input" placeholder="Remise globale" inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} />}
         </div>
         <div className="space-y-1 text-sm">
           <div className="flex justify-between text-slate-500"><span>Total HT</span><span>{m(totals.subtotal)}</span></div>
@@ -215,7 +228,7 @@ export function Pos({
             <select className="input" value={p.paymentMethodId} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, paymentMethodId: e.target.value } : x)))}>
               {paymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.label}</option>)}
             </select>
-            <input className="input w-32" inputMode="decimal" value={p.amount} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} aria-label="Montant reçu" />
+            <input className="input w-32" inputMode="decimal" value={p.amount} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value, auto: false } : x)))} aria-label="Montant reçu" />
             <input className="input hidden w-32 sm:block" placeholder="Réf." value={p.reference} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
             {pays.length > 1 && <button className="btn-ghost px-2" onClick={() => setPays((ps) => ps.filter((_, j) => j !== i))} aria-label="Retirer"><X size={16} /></button>}
           </div>
@@ -232,8 +245,8 @@ export function Pos({
           </div>
         )}
         {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-        <div className="grid grid-cols-2 gap-2">
-          <button className="btn-secondary py-3" disabled={!cart.length || pending} onClick={() => submit(true)}>Vente + facture</button>
+        <div className={clsx("grid gap-2", canInvoice ? "grid-cols-2" : "grid-cols-1")}>
+          {canInvoice && <button className="btn-secondary py-3" disabled={!cart.length || pending} onClick={() => submit(true)}>Vente + facture</button>}
           <button className="btn-primary py-3 text-base" disabled={!cart.length || pending} onClick={() => submit(false)}>
             {pending ? "…" : `Encaisser ${m(totals.total)}`}
           </button>

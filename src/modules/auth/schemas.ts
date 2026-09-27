@@ -18,6 +18,7 @@ export const signupSchema = z.object({
   city: optional,
   country: z.string().trim().length(2).default("TG"),
   currency: z.string().trim().length(3).default("XOF"),
+  timezone: z.string().trim().max(60).optional(),
   taxId: optional,
   billingAddress: optional,
   extraInfo: optional,
@@ -26,5 +27,5 @@ export type SignupInput = z.input<typeof signupSchema>;
 
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email("Email invalide"),
-  password: z.string().min(1, "Mot de passe requis"),
+  password: z.string().min(1, "Mot de passe requis").max(200, "Mot de passe trop long"),
 });

@@ -1,0 +1,47 @@
+# Installation sur un ordinateur (Windows, Mac ou Linux) avec Docker Desktop.
+# Lancement : Demarrer-ZE-Gestion.bat (Windows) ou ./demarrer-ze-gestion.sh (Mac, Linux).
+# Guide : docs/INSTALLATION-ORDINATEUR.md. Pour un serveur en ligne, utiliser docker-compose.prod.yml.
+name: ze-gestion-local
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app_owner
+      POSTGRES_PASSWORD: local-owner
+      POSTGRES_DB: gestion
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_owner -d gestion"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Crée ou met à jour la base, puis charge la boutique de démonstration (une seule fois)
+  migrate:
+    build: { context: .., target: build }
+    command: ["sh", "-c", "npx tsx scripts/migrate.ts && npx tsx scripts/seed.ts"]
+    environment:
+      DATABASE_ADMIN_URL: postgres://app_owner:local-owner@db:5432/gestion
+      DATABASE_URL: postgres://app_user:local-app@db:5432/gestion
+      APP_DB_PASSWORD: local-app
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  app:
+    build: { context: .., target: run }
+    restart: unless-stopped
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      DATABASE_URL: postgres://app_user:local-app@db:5432/gestion
+      APP_URL: http://localhost:3000
+      UPLOAD_DIR: /data/uploads
+    volumes: [uploads:/data/uploads]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  db-data:
+  uploads:

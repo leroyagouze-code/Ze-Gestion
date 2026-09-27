@@ -29,6 +29,41 @@
       "when": 1790480762372,
       "tag": "0003_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790490929184,
+      "tag": "0004_acces_par_niveau",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790492120947,
+      "tag": "0005_securite",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790493926923,
+      "tag": "0006_abonnements",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790518856932,
+      "tag": "0007_licences",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790526942083,
+      "tag": "0008_retours",
+      "breakpoints": true
     }
   ]
 }

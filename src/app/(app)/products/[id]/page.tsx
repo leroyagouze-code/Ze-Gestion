@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/confirm-button";
 import { notFound } from "next/navigation";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
@@ -39,7 +40,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             </Badge>
             {can(ctx.permissions, "products.delete") && (
               <form action={deleteProductAction.bind(null, id)}>
-                <button className="btn-ghost text-red-600">Supprimer</button>
+                <ConfirmButton message="Supprimer cet article ? Il disparaît du catalogue et de la caisse." className="btn-ghost text-red-600">Supprimer</ConfirmButton>
               </form>
             )}
           </>
@@ -51,6 +52,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             <Card title="Fiche produit">
               {p.imageUrl && <img src={p.imageUrl} alt="" className="mb-4 h-28 w-28 rounded-lg object-cover ring-1 ring-slate-200" />}
               <ProductForm
+                taxMode={ctx.company.taxMode}
                 action={updateProductAction.bind(null, id)}
                 options={options}
                 product={p}

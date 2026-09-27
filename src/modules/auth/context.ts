@@ -1,28 +1,31 @@
 import { and, eq } from "drizzle-orm";
 import { memberships, roles, stores } from "@/db/schema";
 import { withTenant, type TenantContext } from "@/db/tenant";
+import { readOnlyPermissions, subscriptionState, type SubscriptionState } from "@/modules/billing/access";
 import { getCompany } from "@/lib/auth/session";
-import { assertCan, can, type Permission } from "@/lib/permissions";
+import { ADMIN_ROLE, ALL_PERMISSIONS, assertCan, can, type Permission } from "@/lib/permissions";
 
 export type AppContext = TenantContext & {
   userId: string;
-  user: { fullName: string; email: string; isSuperAdmin: boolean };
+  user: { fullName: string; email: string; isSuperAdmin: boolean; mustChangePassword: boolean };
   company: NonNullable<Awaited<ReturnType<typeof getCompany>>>;
   roleName: string;
+  isAdmin: boolean;
   permissions: string[];
+  subscription: SubscriptionState;
   storeId: string;
   ip?: string | null;
 };
 
 export async function loadContext(
-  user: { userId: string; fullName: string; email: string; isSuperAdmin: boolean },
+  user: { userId: string; fullName: string; email: string; isSuperAdmin: boolean; mustChangePassword?: boolean },
   companyId: string,
 ): Promise<AppContext | null> {
   const company = await getCompany(companyId);
   if (!company || company.status !== "active") return null;
   const data = await withTenant({ companyId, userId: user.userId }, async (tx) => {
     const [m] = await tx
-      .select({ roleName: roles.name, permissions: roles.permissions, storeId: memberships.storeId })
+      .select({ roleName: roles.name, permissions: roles.permissions, isSystem: roles.isSystem, storeId: memberships.storeId })
       .from(memberships)
       .innerJoin(roles, eq(roles.id, memberships.roleId))
       .where(and(eq(memberships.userId, user.userId), eq(memberships.companyId, companyId), eq(memberships.isActive, true)))
@@ -36,13 +39,21 @@ export async function loadContext(
     return storeId ? { ...m, storeId } : null;
   });
   if (!data) return null;
+  const isAdmin = data.isSystem && data.roleName === ADMIN_ROLE;
+  const subscription = await subscriptionState(companyId);
+  // L'administrateur détient toujours tous les droits, même ceux ajoutés après la création du rôle.
+  const granted = isAdmin ? [...ALL_PERMISSIONS] : data.permissions;
   return {
     companyId,
     userId: user.userId,
-    user: { fullName: user.fullName, email: user.email, isSuperAdmin: user.isSuperAdmin },
+    user: { fullName: user.fullName, email: user.email, isSuperAdmin: user.isSuperAdmin, mustChangePassword: !!user.mustChangePassword },
     company,
     roleName: data.roleName,
-    permissions: data.permissions,
+    isAdmin,
+    // Essai terminé ou abonnement impayé : lecture seule, appliquée à la source des droits
+    // (chaque écriture exige une permission d'action, donc toutes sont refusées côté serveur).
+    permissions: subscription.readOnly ? readOnlyPermissions(granted) : granted,
+    subscription,
     storeId: data.storeId,
   };
 }

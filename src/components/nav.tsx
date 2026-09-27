@@ -9,6 +9,7 @@ import {
   Boxes,
   FileText,
   History,
+  KeyRound,
   LayoutDashboard,
   Menu,
   Package,
@@ -22,6 +23,7 @@ import {
   X,
   Shield,
 } from "lucide-react";
+import { Logo } from "./logo";
 
 const ICONS = {
   dashboard: LayoutDashboard,
@@ -38,6 +40,7 @@ const ICONS = {
   settings: Settings,
   audit: History,
   admin: Shield,
+  licence: KeyRound,
 };
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
@@ -84,7 +87,9 @@ export function AppShell({
   const footer = (
     <div className="border-t border-slate-200 p-3">
       <div className="truncate text-sm font-medium">{userName}</div>
-      <div className="mb-2 text-xs text-slate-500">{roleName}</div>
+      <div className="mb-2 text-xs text-slate-500">
+        {roleName} · <Link href="/account/password" className="hover:underline">Mot de passe</Link>
+      </div>
       <form action={logoutAction}>
         <button className="btn-secondary w-full">Déconnexion</button>
       </form>
@@ -94,7 +99,7 @@ export function AppShell({
     <div className="min-h-dvh lg:flex">
       <aside className="no-print hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-dvh">
         <div className="border-b border-slate-200 px-4 py-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">GestionPro</div>
+          <Logo size={28} className="mb-2 text-sm" />
           <div className="truncate font-semibold">{companyName}</div>
         </div>
         {nav}
@@ -104,7 +109,10 @@ export function AppShell({
         <button aria-label="Menu" onClick={() => setOpen(true)} className="btn-ghost px-2">
           <Menu size={20} />
         </button>
-        <span className="truncate font-semibold">{companyName}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <Logo size={24} showName={false} />
+          <span className="truncate font-semibold">{companyName}</span>
+        </span>
         <Link href="/pos" className="btn-primary px-3 py-1.5">
           <ShoppingCart size={16} /> Caisse
         </Link>
@@ -114,7 +122,10 @@ export function AppShell({
           <div className="absolute inset-0 bg-slate-900/40" onClick={() => setOpen(false)} />
           <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <span className="truncate font-semibold">{companyName}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <Logo size={24} showName={false} />
+                <span className="truncate font-semibold">{companyName}</span>
+              </span>
               <button aria-label="Fermer" onClick={() => setOpen(false)} className="btn-ghost px-2">
                 <X size={20} />
               </button>

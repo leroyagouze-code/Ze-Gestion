@@ -4,7 +4,7 @@ import { Badge, Card, Field, PageHeader, SelectField, TableWrap } from "@/compon
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { listMembers } from "@/modules/users/service";
-import { addMemberAction, toggleMemberAction, updateMemberAction } from "./actions";
+import { addMemberAction, resetPasswordAction, toggleMemberAction, updateMemberAction } from "./actions";
 
 export const metadata = { title: "Utilisateurs" };
 
@@ -45,6 +45,11 @@ export default async function UsersPage() {
                     <td className="hidden md:table-cell">{u.lastLoginAt ? formatDate(u.lastLoginAt, true) : "Jamais"}</td>
                     <td className="text-right">
                       {!u.isOwner && u.userId !== ctx.userId && (
+                        <ActionForm action={resetPasswordAction.bind(null, u.id)} className="mb-1">
+                          <button className="text-xs text-brand-700 hover:underline">Réinitialiser le mot de passe</button>
+                        </ActionForm>
+                      )}
+                      {!u.isOwner && u.userId !== ctx.userId && (
                         <form action={toggleMemberAction.bind(null, u.id, !u.isActive)}>
                           <button className={u.isActive ? "text-xs text-red-600 hover:underline" : "text-xs text-brand-700 hover:underline"}>{u.isActive ? "Désactiver" : "Réactiver"}</button>
                         </form>
@@ -61,7 +66,7 @@ export default async function UsersPage() {
             <Field label="Nom complet" name="fullName" required />
             <Field label="Email" name="email" type="email" required />
             <Field label="Téléphone" name="phone" type="tel" />
-            <Field label="Mot de passe provisoire" name="password" type="text" minLength={8} required hint="Ignoré si l'email a déjà un compte" />
+            <Field label="Mot de passe provisoire" name="password" type="text" minLength={8} required hint="Provisoire : il devra le changer à sa première connexion" />
             <SelectField label="Rôle" name="roleId" options={roleOpts} defaultValue={roles.find((r) => r.name === "Caissier")?.id} />
             <SelectField label="Boutique" name="storeId" placeholder="Boutique par défaut" options={storeOpts} />
             <SubmitButton>Ajouter</SubmitButton>

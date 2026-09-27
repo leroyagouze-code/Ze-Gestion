@@ -1,0 +1,89 @@
+{
+  "name": "ze-gestion-desktop",
+  "productName": "ZE Gestion",
+  "version": "1.0.0",
+  "description": "ZE Gestion : caisse, stock, factures et rapports, sur votre ordinateur",
+  "author": "ZE GROUP",
+  "private": true,
+  "main": "main.cjs",
+  "zeGestion": {
+    "serverUrl": ""
+  },
+  "scripts": {
+    "prepare-app": "node build/prepare.mjs",
+    "start": "electron .",
+    "smoke": "node build/smoke-test.cjs",
+    "dist:win": "node build/prepare.mjs --target=win && electron-builder --win nsis --x64",
+    "dist:linux": "node build/prepare.mjs --target=linux && electron-builder --linux dir"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.3",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "electron": "38.8.6",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.zegroup.gestion",
+    "productName": "ZE Gestion",
+    "copyright": "ZE GROUP",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "services.cjs",
+      "splash.html",
+      "icon.png",
+      "package.json",
+      "node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "app",
+        "to": ".",
+        "filter": [
+          "server/**/*",
+          "server/node_modules/**/*"
+        ]
+      },
+      {
+        "from": "app/drizzle",
+        "to": "drizzle"
+      },
+      {
+        "from": "app/pgsql",
+        "to": "pgsql",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "ZE Gestion",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerLanguages": [
+        "fr_FR"
+      ],
+      "language": "1036",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "ZE-Gestion-Installation-${version}.exe"
+    },
+    "linux": {
+      "target": "dir",
+      "icon": "icon.png"
+    }
+  }
+}

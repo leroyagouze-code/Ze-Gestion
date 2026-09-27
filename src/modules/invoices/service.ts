@@ -1,6 +1,8 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { localDate } from "@/lib/dates";
+import { contains } from "@/lib/search";
 import { z } from "zod";
-import { db } from "@/db";
+import { db, type Tx } from "@/db";
 import {
   customers,
   invoiceItems,
@@ -8,19 +10,21 @@ import {
   paymentMethods,
   payments,
   saleItems,
+  products,
   sales,
   type CustomerSnapshot,
 } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
+import { assertCollectMethod, assertOwned } from "@/db/owned";
 import { audit } from "@/lib/audit";
 import { newToken, getCompany } from "@/lib/auth/session";
 import { BusinessError, NotFoundError } from "@/lib/errors";
-import { computeTotals, currencyDecimals, round } from "@/lib/money";
+import { computeTotals, currencyDecimals, isTaxMode, round } from "@/lib/money";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
 import { nextDocumentNumber } from "@/modules/settings/sequences";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = (ctx: { company: { timezone: string } }) => localDate(new Date(), ctx.company.timezone);
 
 function snapshot(c: typeof customers.$inferSelect | null | undefined): CustomerSnapshot | null {
   if (!c) return null;
@@ -52,12 +56,13 @@ export async function createInvoiceFromSale(ctx: AppContext, saleId: string) {
         saleId,
         customerId: sale.customerId,
         customerSnapshot: snapshot(customer),
-        issueDate: today(),
+        issueDate: today(ctx),
         status,
         subtotal: sale.subtotal,
         discountTotal: sale.discountTotal,
         taxTotal: sale.taxTotal,
         total: sale.total,
+        taxMode: sale.taxMode,
         paidAmount: sale.paidAmount,
         paymentMethodLabel: methods.map((m) => m.label).join(", ") || (sale.dueAmount > 0 ? "Crédit" : null),
         notes: ctx.company.invoiceNotes,
@@ -91,6 +96,8 @@ export const manualInvoiceSchema = z.object({
   paymentTerms: z.string().max(500).nullish(),
   notes: z.string().max(2000).nullish(),
   discount: z.number().min(0).default(0),
+  /** Correction : facture remplacée, annulée dans la même opération. */
+  replacesId: z.string().uuid().nullish(),
   items: z
     .array(
       z.object({
@@ -109,11 +116,40 @@ export const manualInvoiceSchema = z.object({
 export async function createManualInvoice(ctx: AppContext, raw: z.input<typeof manualInvoiceSchema>) {
   ctxAssert(ctx, "invoices.create");
   const input = manualInvoiceSchema.parse(raw);
-  const decimals = currencyDecimals(ctx.company.currency);
-  const totals = computeTotals(input.items, input.discount, decimals);
+  if (input.replacesId) ctxAssert(ctx, "invoices.cancel");
   return withTenant(ctx, async (tx) => {
+    let replaced: typeof invoices.$inferSelect | null = null;
+    if (input.replacesId) {
+      [replaced] = await tx.select().from(invoices).where(eq(invoices.id, input.replacesId)).for("update");
+      if (!replaced) throw new NotFoundError("Facture à corriger");
+      assertCorrectable(replaced);
+      input.notes = [input.notes, `Remplace la facture ${replaced.number}`].filter(Boolean).join("\n");
+    }
+    const id = await createManualInvoiceInTx(tx, ctx, input);
+    if (replaced) {
+      const [created] = await tx.select({ number: invoices.number }).from(invoices).where(eq(invoices.id, id));
+      await cancelInvoiceInTx(tx, ctx, replaced, `Corrigée : remplacée par ${created.number}`);
+    }
+    return id;
+  });
+}
+
+/** Une facture se corrige (annulée et refaite) tant qu'elle vient de la saisie manuelle et n'a reçu aucun paiement. */
+export function assertCorrectable(inv: typeof invoices.$inferSelect) {
+  if (inv.status === "cancelled") throw new BusinessError("Cette facture est déjà annulée");
+  if (inv.saleId) throw new BusinessError("Facture issue d'une vente de caisse : annulez la vente puis refaites-la");
+  if (inv.paidAmount > 0) throw new BusinessError("Cette facture a déjà reçu un paiement : annulez-la avec un motif, puis créez la nouvelle facture");
+}
+
+/** Création de la facture dans une transaction existante (utilisée aussi pour la correction). */
+export async function createManualInvoiceInTx(tx: Tx, ctx: AppContext, input: z.output<typeof manualInvoiceSchema>) {
+  const decimals = currencyDecimals(ctx.company.currency);
+  const taxMode = isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line";
+  const totals = computeTotals(input.items, input.discount, decimals, taxMode);
+  {
     const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)))[0] : null;
     if (input.customerId && !customer) throw new NotFoundError("Client");
+    for (const i of input.items) await assertOwned(tx, products, i.productId, "Produit");
     const snap = snapshot(customer) ?? (input.customerName ? { name: input.customerName } : null);
     const number = await nextDocumentNumber(tx, ctx.companyId, "invoice");
     const [inv] = await tx
@@ -123,13 +159,14 @@ export async function createManualInvoice(ctx: AppContext, raw: z.input<typeof m
         number,
         customerId: customer?.id ?? null,
         customerSnapshot: snap,
-        issueDate: today(),
+        issueDate: today(ctx),
         dueDate: input.dueDate ?? null,
         status: "issued",
         subtotal: totals.subtotal,
         discountTotal: totals.discountTotal,
         taxTotal: totals.taxTotal,
         total: totals.total,
+        taxMode,
         paymentTerms: input.paymentTerms ?? null,
         notes: input.notes ?? ctx.company.invoiceNotes,
         publicToken: newToken(24),
@@ -158,7 +195,7 @@ export async function createManualInvoice(ctx: AppContext, raw: z.input<typeof m
     }
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "invoice.created", entityType: "invoice", entityId: inv.id, metadata: { number, total: totals.total }, ip: ctx.ip });
     return inv.id;
-  });
+   }
 }
 
 export async function recordInvoicePayment(ctx: AppContext, invoiceId: string, paymentMethodId: string, amount: number, reference?: string | null) {
@@ -169,8 +206,10 @@ export async function recordInvoicePayment(ctx: AppContext, invoiceId: string, p
     if (!inv) throw new NotFoundError("Facture");
     if (inv.saleId) throw new BusinessError("Facture liée à une vente : encaisser la créance depuis la fiche client");
     if (inv.status === "cancelled" || inv.status === "paid") throw new BusinessError("Facture déjà soldée ou annulée");
+    await assertCollectMethod(tx, paymentMethodId);
+    if (!Number.isFinite(amount)) throw new BusinessError("Montant invalide");
     const pay = round(Math.min(amount, inv.total - inv.paidAmount), decimals);
-    if (pay <= 0) throw new BusinessError("Montant invalide");
+    if (!(pay > 0)) throw new BusinessError("Montant invalide");
     const paidAmount = round(inv.paidAmount + pay, decimals);
     await tx
       .update(invoices)
@@ -192,7 +231,16 @@ export async function cancelInvoice(ctx: AppContext, id: string, reason: string)
     const [inv] = await tx.select().from(invoices).where(eq(invoices.id, id)).for("update");
     if (!inv) throw new NotFoundError("Facture");
     if (inv.status === "cancelled") throw new BusinessError("Facture déjà annulée");
-    await tx.update(invoices).set({ status: "cancelled" }).where(eq(invoices.id, id));
+    await cancelInvoiceInTx(tx, ctx, inv, reason);
+  });
+}
+
+async function cancelInvoiceInTx(tx: Tx, ctx: AppContext, inv: typeof invoices.$inferSelect, reason: string) {
+  const id = inv.id;
+  {
+    // le motif reste lisible sur la facture elle-même (écran et PDF)
+    const notes = [inv.notes, `Annulée : ${reason}`].filter(Boolean).join("\n");
+    await tx.update(invoices).set({ status: "cancelled", notes }).where(eq(invoices.id, id));
     // Une facture manuelle annulée retire sa créance restante ; celle d'une vente ne touche pas la vente.
     if (!inv.saleId && inv.customerId) {
       const remaining = inv.total - inv.paidAmount;
@@ -205,7 +253,7 @@ export async function cancelInvoice(ctx: AppContext, id: string, reason: string)
         .where(eq(customers.id, inv.customerId));
     }
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "invoice.cancelled", entityType: "invoice", entityId: id, metadata: { number: inv.number, reason }, ip: ctx.ip });
-  });
+  }
 }
 
 export async function listInvoices(ctx: AppContext, opts: { page?: number; status?: string; q?: string }) {
@@ -214,7 +262,7 @@ export async function listInvoices(ctx: AppContext, opts: { page?: number; statu
   return withTenant(ctx, async (tx) => {
     const conds = [];
     if (opts.status) conds.push(sql`${invoices.status} = ${opts.status}`);
-    if (opts.q) conds.push(sql`(${invoices.number} ilike ${"%" + opts.q + "%"} or ${invoices.customerSnapshot}->>'name' ilike ${"%" + opts.q + "%"})`);
+    if (opts.q) conds.push(sql`(${invoices.number} ilike ${contains(opts.q)} or ${invoices.customerSnapshot}->>'name' ilike ${contains(opts.q)})`);
     const where = conds.length ? and(...conds) : undefined;
     const rows = await tx
       .select({
@@ -256,7 +304,7 @@ export async function getPublicInvoice(token: string) {
   const companyId = res.rows[0]?.company_id;
   if (!companyId) return null;
   const company = await getCompany(companyId);
-  if (!company) return null;
+  if (!company || company.status !== "active") return null;
   const data = await withTenant({ companyId, userId: null }, async (tx) => {
     const [row] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.publicToken, token));
     return row ? loadInvoice(tx, row.id) : null;

@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getContext } from "@/lib/auth/server";
+import { setRequestTimeZone } from "@/lib/dates";
+import { can } from "@/lib/permissions";
 import { csvResponse, toCsv } from "@/lib/csv";
 import { localDate } from "@/lib/dates";
 import { errorMessage } from "@/lib/actions";
@@ -10,8 +12,12 @@ import { periodRange, type PeriodKey } from "@/modules/dashboard/service";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ entity: string }> }) {
   const ctx = await getContext();
+  if (ctx) setRequestTimeZone(ctx.company.timezone);
   if (!ctx) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   const { entity } = await params;
+  if (entity !== "products-template" && !can(ctx.permissions, "data.export")) {
+    return NextResponse.json({ error: "Vous n'êtes pas autorisé à exporter les données" }, { status: 403 });
+  }
   const today = localDate(new Date());
   try {
     switch (entity) {

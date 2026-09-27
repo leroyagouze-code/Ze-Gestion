@@ -1,4 +1,5 @@
 import "server-only";
+import { setRequestTimeZone } from "@/lib/dates";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -8,7 +9,8 @@ import { SESSION_COOKIE, validateSessionToken } from "./session";
 
 export async function requestMeta() {
   const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? h.get("x-real-ip") ?? null;
+  // Dernière entrée : celle ajoutée par notre proxy (Caddy), que le client ne peut pas falsifier
+  const ip = h.get("x-forwarded-for")?.split(",").at(-1)?.trim() || h.get("x-real-ip") || null;
   return { ip, userAgent: h.get("user-agent") };
 }
 
@@ -33,10 +35,13 @@ export const getSession = cache(async () => {
   return s ? { ...s, token } : null;
 });
 
-/** Contexte complet de la requête (utilisateur + entreprise + permissions), mis en cache par requête. */
+/**
+ * Contexte complet de la requête (utilisateur + entreprise + permissions), mis en cache par requête.
+ * Nul tant qu'un mot de passe provisoire n'a pas été changé : aucune page ni API n'est alors accessible.
+ */
 export const getContext = cache(async (): Promise<AppContext | null> => {
   const s = await getSession();
-  if (!s?.companyId) return null;
+  if (!s?.companyId || s.mustChangePassword) return null;
   const ctx = await loadContext(s, s.companyId);
   if (!ctx) return null;
   const { ip } = await requestMeta();
@@ -44,8 +49,11 @@ export const getContext = cache(async (): Promise<AppContext | null> => {
 });
 
 export async function requireContext(permission?: Permission): Promise<AppContext> {
+  // Mot de passe provisoire (créé ou réinitialisé par un administrateur) : à changer avant tout le reste
+  if ((await getSession())?.mustChangePassword) redirect("/account/password");
   const ctx = await getContext();
   if (!ctx) redirect("/login");
+  setRequestTimeZone(ctx.company.timezone);
   if (permission && !can(ctx.permissions, permission)) redirect("/forbidden");
   return ctx;
 }

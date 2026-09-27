@@ -1,30 +1,9 @@
-export const COUNTRIES = [
-  { value: "TG", label: "Togo" },
-  { value: "BJ", label: "Bénin" },
-  { value: "CI", label: "Côte d'Ivoire" },
-  { value: "SN", label: "Sénégal" },
-  { value: "BF", label: "Burkina Faso" },
-  { value: "ML", label: "Mali" },
-  { value: "NE", label: "Niger" },
-  { value: "GW", label: "Guinée-Bissau" },
-  { value: "GN", label: "Guinée" },
-  { value: "GH", label: "Ghana" },
-  { value: "NG", label: "Nigeria" },
-  { value: "CM", label: "Cameroun" },
-  { value: "GA", label: "Gabon" },
-  { value: "CG", label: "Congo" },
-  { value: "CD", label: "RD Congo" },
-  { value: "FR", label: "France" },
-  { value: "US", label: "États-Unis" },
-];
+import { ALL_COUNTRIES, ALL_CURRENCIES, ALL_TIMEZONES, currencyLabel } from "./countries";
 
-export const CURRENCIES = [
-  { value: "XOF", label: "Franc CFA UEMOA (FCFA)" },
-  { value: "XAF", label: "Franc CFA CEMAC (FCFA)" },
-  { value: "GHS", label: "Cedi (GHS)" },
-  { value: "NGN", label: "Naira (NGN)" },
-  { value: "GNF", label: "Franc guinéen (GNF)" },
-  { value: "CDF", label: "Franc congolais (CDF)" },
-  { value: "EUR", label: "Euro (EUR)" },
-  { value: "USD", label: "Dollar US (USD)" },
-];
+/** Listes pour les formulaires : tous les pays, toutes les devises, tous les fuseaux. */
+export const COUNTRIES = ALL_COUNTRIES.map((c) => ({ value: c.code, label: c.name }));
+export const CURRENCIES = ALL_CURRENCIES.map((c) => ({ value: c, label: currencyLabel(c) }));
+export const TIMEZONES = ALL_TIMEZONES.map((z) => ({ value: z, label: z.replace(/_/g, " ") }));
+
+/** Devise et fuseau de chaque pays, pour préremplir le formulaire côté navigateur. */
+export const COUNTRY_INFO: Record<string, [currency: string, timezone: string]> = Object.fromEntries(ALL_COUNTRIES.map((c) => [c.code, [c.currency, c.timezone]]));

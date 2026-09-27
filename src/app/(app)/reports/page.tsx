@@ -1,6 +1,7 @@
 import { parsePeriod, PeriodFilter } from "@/components/period-filter";
 import { Card, PageHeader, Stat, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
+import { can } from "@/lib/permissions";
 import { formatDate } from "@/lib/dates";
 import { formatMoney, formatQty } from "@/lib/money";
 import { periodRange, PERIOD_LABELS } from "@/modules/dashboard/service";
@@ -25,9 +26,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         subtitle={PERIOD_LABELS[period]}
         actions={
           <>
-            <a href={`/api/export/sales?${qs}`} className="btn-secondary">Ventes CSV</a>
-            <a href="/api/export/stock" className="btn-secondary">Stock CSV</a>
-            <a href="/api/export/customers" className="btn-secondary">Clients CSV</a>
+            {can(ctx.permissions, "data.export") && (
+              <>
+                <a href={`/api/export/sales?${qs}`} className="btn-secondary">Ventes CSV</a>
+                <a href="/api/export/stock" className="btn-secondary">Stock CSV</a>
+                <a href="/api/export/customers" className="btn-secondary">Clients CSV</a>
+              </>
+            )}
             <PrintButton />
           </>
         }
@@ -66,23 +71,27 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </TableWrap>
         </Card>
         <Card title="Encaissements par moyen de paiement">
-          <table className="table">
-            <tbody>
-              {r.byPayment.map((p) => (
-                <tr key={p.method}><td>{p.method}</td><td className="text-right">{p.count}</td><td className="text-right">{m(p.total)}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <tbody>
+                {r.byPayment.map((p) => (
+                  <tr key={p.method}><td>{p.method}</td><td className="text-right">{p.count}</td><td className="text-right">{m(p.total)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
         <Card title="TVA par taux">
-          <table className="table">
-            <thead><tr><th>Taux</th><th className="text-right">Base HT</th><th className="text-right">TVA</th></tr></thead>
-            <tbody>
-              {r.byTax.map((t) => (
-                <tr key={t.rate}><td>{formatQty(t.rate)} %</td><td className="text-right">{m(t.base)}</td><td className="text-right">{m(t.tax)}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead><tr><th>Taux</th><th className="text-right">Base HT</th><th className="text-right">TVA</th></tr></thead>
+              <tbody>
+                {r.byTax.map((t) => (
+                  <tr key={t.rate}><td>{formatQty(t.rate)} %</td><td className="text-right">{m(t.base)}</td><td className="text-right">{m(t.tax)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       </div>
     </>

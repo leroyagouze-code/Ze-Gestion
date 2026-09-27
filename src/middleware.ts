@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/signup", "/f/", "/api/f/", "/api/health", "/files/", "/forbidden"];
+const PUBLIC = ["/login", "/signup", "/f/", "/api/f/", "/api/health", "/api/installs", "/files/", "/forbidden", "/brand/"];
 
 /** Filtre rapide : sans cookie de session, redirection vers /login. La session est vérifiée côté serveur. */
 export function middleware(req: NextRequest) {
@@ -16,4 +16,4 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/((?!_next/|favicon.ico|robots.txt).*)"] };
+export const config = { matcher: ["/((?!_next/|favicon.ico|icon.png|apple-icon.png|robots.txt).*)"] };

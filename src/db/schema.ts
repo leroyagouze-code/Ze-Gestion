@@ -75,8 +75,13 @@ export const companies = pgTable("companies", {
   invoiceFooter: text("invoice_footer"),
   invoiceFormat: text("invoice_format").notNull().default("A4"),
   receiptFormat: text("receipt_format").notNull().default("80mm"),
+  allowNegativeStock: boolean("allow_negative_stock").notNull().default(false),
   locale: text("locale").notNull().default("fr"),
   timezone: text("timezone").notNull().default("Africa/Lome"),
+  /** TVA ligne par ligne (prix TTC) ou sur le total HT (prix HT) : voir TaxMode dans src/lib/money.ts. */
+  taxMode: text("tax_mode").notNull().default("line"),
+  /** Modules masqués du menu (voir src/lib/modules.ts). Vide = tout est affiché. */
+  hiddenModules: text("hidden_modules").array().notNull().default(sql`'{}'::text[]`),
   status: companyStatus("status").notNull().default("active"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -91,9 +96,68 @@ export const subscriptions = pgTable("subscriptions", {
   status: subscriptionStatus("status").notNull().default("trialing"),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  /** Accès complet offert par la plateforme : ni date de fin, ni limite de formule. */
+  unlimited: boolean("unlimited").notNull().default(false),
+  notes: text("notes"),
+  /** Logiciel de bureau : code de licence signé saisi sur ce poste (revérifié à chaque chargement). */
+  licenseCode: text("license_code"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/** Paiements d'abonnement reçus par la plateforme (TMoney, Flooz, espèces…), saisis par le super admin. */
+/** Codes de licence du logiciel de bureau générés par le super admin (registre). */
+export const licenseIssues = pgTable("license_issues", {
+  id: id(),
+  installId: text("install_id").notNull(),
+  plan: text("plan").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  customer: text("customer"),
+  code: text("code").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});
+
+/**
+ * Installations signalées par le logiciel Windows et les postes en ligne (hors données des clients) :
+ * table de la plateforme, lue seulement par le super admin.
+ */
+export const appInstalls = pgTable("app_installs", {
+  id: id(),
+  installId: text("install_id").notNull().unique(),
+  edition: text("edition").notNull(), // "desktop" | "web"
+  version: text("version"),
+  os: text("os"),
+  locale: text("locale"),
+  timezone: text("timezone"),
+  country: text("country"),
+  companyName: text("company_name"),
+  licensed: boolean("licensed").notNull().default(false),
+  pings: integer("pings").notNull().default(1),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const subscriptionPayments = pgTable(
+  "subscription_payments",
+  {
+    id: id(),
+    companyId: companyId(),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id),
+    amount: money("amount").notNull(),
+    currency: text("currency").notNull().default("XOF"),
+    method: text("method").notNull(),
+    reference: text("reference"),
+    months: integer("months").notNull(),
+    periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+    periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+    recordedBy: uuid("recorded_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("subscription_payments_company_idx").on(t.companyId, t.createdAt)],
+);
 
 export const users = pgTable("users", {
   id: id(),
@@ -102,6 +166,8 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   phone: text("phone"),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -414,6 +480,8 @@ export const sales = pgTable(
     discountTotal: money("discount_total").notNull().default(0),
     taxTotal: money("tax_total").notNull().default(0),
     total: money("total").notNull(), // TTC
+    /** Mode de TVA au moment de la vente : "line" = prix unitaires TTC, "total" = prix unitaires HT. */
+    taxMode: text("tax_mode").notNull().default("line"),
     costTotal: money("cost_total").notNull().default(0),
     paidAmount: money("paid_amount").notNull().default(0),
     dueAmount: money("due_amount").notNull().default(0),
@@ -481,6 +549,8 @@ export const invoices = pgTable(
     discountTotal: money("discount_total").notNull().default(0),
     taxTotal: money("tax_total").notNull().default(0),
     total: money("total").notNull(),
+    /** Mode de TVA au moment de la facture : "line" = prix unitaires TTC, "total" = prix unitaires HT. */
+    taxMode: text("tax_mode").notNull().default("line"),
     paidAmount: money("paid_amount").notNull().default(0),
     paymentMethodLabel: text("payment_method_label"),
     paymentTerms: text("payment_terms"),

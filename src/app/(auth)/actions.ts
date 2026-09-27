@@ -5,7 +5,7 @@ import { errorMessage, type ActionState } from "@/lib/actions";
 import { clearSessionCookie, getSession, requestMeta, setSessionCookie } from "@/lib/auth/server";
 import { deleteSession } from "@/lib/auth/session";
 import { formToObject } from "@/lib/zod";
-import { login, signup } from "@/modules/auth/service";
+import { changePassword, login, signup } from "@/modules/auth/service";
 
 export async function signupAction(_: ActionState, fd: FormData): Promise<ActionState> {
   let ok = false;
@@ -20,7 +20,7 @@ export async function signupAction(_: ActionState, fd: FormData): Promise<Action
 }
 
 export async function loginAction(_: ActionState, fd: FormData): Promise<ActionState> {
-  let target = "/dashboard";
+  let target = "/";
   try {
     const res = await login({ email: String(fd.get("email") ?? ""), password: String(fd.get("password") ?? "") }, await requestMeta());
     await setSessionCookie(res.session.token, res.session.expiresAt);
@@ -29,6 +29,21 @@ export async function loginAction(_: ActionState, fd: FormData): Promise<ActionS
     return { error: errorMessage(e) };
   }
   redirect(target);
+}
+
+export async function changePasswordAction(_: ActionState, fd: FormData): Promise<ActionState> {
+  const s = await getSession();
+  if (!s) redirect("/login");
+  try {
+    await changePassword(
+      { userId: s.userId, companyId: s.companyId, ip: (await requestMeta()).ip },
+      { current: String(fd.get("current") ?? ""), next: String(fd.get("next") ?? ""), confirm: String(fd.get("confirm") ?? "") },
+      s.token,
+    );
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+  redirect("/?password=changed");
 }
 
 export async function logoutAction() {

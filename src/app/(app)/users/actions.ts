@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 import { runAction, type ActionState } from "@/lib/actions";
 import { requireContext } from "@/lib/auth/server";
 import { formToObject } from "@/lib/zod";
-import { addMember, saveRole, updateMember } from "@/modules/users/service";
+import { addMember, deleteRole, resetMemberPassword, saveRole, updateMember } from "@/modules/users/service";
 
 export async function addMemberAction(_: ActionState, fd: FormData): Promise<ActionState> {
   const ctx = await requireContext();
   const res = await runAction(async () => {
     await addMember(ctx, formToObject(fd) as never);
-    return "Utilisateur ajouté. Communiquez-lui son email et son mot de passe.";
+    return "Utilisateur ajouté. Communiquez-lui son email et son mot de passe provisoire : il devra le changer à sa première connexion.";
   });
   revalidatePath("/users");
   return res;
@@ -39,4 +39,22 @@ export async function saveRoleAction(id: string | null, _: ActionState, fd: Form
   });
   revalidatePath("/users/roles");
   return res;
+}
+
+export async function deleteRoleAction(id: string, _: ActionState, _fd: FormData): Promise<ActionState> {
+  const ctx = await requireContext();
+  const res = await runAction(async () => {
+    await deleteRole(ctx, id);
+    return "Rôle supprimé";
+  });
+  revalidatePath("/users/roles");
+  return res;
+}
+
+export async function resetPasswordAction(id: string, _: ActionState, _fd: FormData): Promise<ActionState> {
+  const ctx = await requireContext();
+  return runAction(async () => {
+    const temporary = await resetMemberPassword(ctx, id);
+    return `Mot de passe provisoire : ${temporary} (à communiquer, il devra le changer à la connexion)`;
+  });
 }

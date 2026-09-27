@@ -15,7 +15,7 @@ import {
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
-import { computeTotals, currencyDecimals, round } from "@/lib/money";
+import { computeTotals, currencyDecimals, isTaxMode, lineDiscount, round } from "@/lib/money";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
 import { nextDocumentNumber } from "@/modules/settings/sequences";
@@ -49,6 +49,9 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
   ctxAssert(ctx, "sales.create");
   const input = saleSchema.parse(raw);
   const decimals = currencyDecimals(ctx.company.currency);
+  if ((input.discount > 0 || input.items.some((i) => i.discount > 0)) && !ctxCan(ctx, "sales.discount")) {
+    throw new BusinessError("Vous n'êtes pas autorisé à accorder des remises");
+  }
 
   return withTenant(ctx, async (tx) => {
     const ids = [...new Set(input.items.map((i) => i.productId))];
@@ -72,7 +75,8 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       const unitPrice = p.promoPrice != null && p.promoPrice > 0 ? p.promoPrice : p.salePrice;
       return { p, quantity: i.quantity, unitPrice, discount: i.discount, taxRate: p.taxRate };
     });
-    const totals = computeTotals(lines, input.discount, decimals);
+    const taxMode = isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line";
+    const totals = computeTotals(lines, input.discount, decimals, taxMode);
     if (totals.total < 0) throw new BusinessError("Total négatif");
 
     // Paiements : on n'enregistre pas la monnaie rendue ; le reste dû devient une créance client.
@@ -87,6 +91,7 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
     const paid = Math.min(tenderedSum, totals.total);
     const due = round(totals.total - paid, decimals);
     const change = round(Math.max(tenderedSum - totals.total, 0), decimals);
+    if (due > 0 && !ctxCan(ctx, "sales.credit")) throw new BusinessError("Vous n'êtes pas autorisé à vendre à crédit : encaissez la totalité");
     if (due > 0 && !input.customerId) throw new BusinessError("Une vente à crédit ou partiellement payée nécessite un client");
 
     if (input.customerId) {
@@ -108,6 +113,7 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         discountTotal: totals.discountTotal,
         taxTotal: totals.taxTotal,
         total: totals.total,
+        taxMode,
         costTotal,
         paidAmount: paid,
         dueAmount: due,
@@ -123,7 +129,7 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         name: l.p.name,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
-        discount: l.discount,
+        discount: lineDiscount(l),
         taxRate: l.taxRate,
         taxAmount: totals.lines[idx].taxAmount,
         lineTotal: totals.lines[idx].lineTotal,
@@ -131,18 +137,26 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       })),
     );
 
+    // Verrous de stock toujours pris dans le même ordre (par produit) : pas d'interblocage entre ventes simultanées
+    const byProduct = new Map<string, { name: string; quantity: number }>();
     for (const l of lines) {
-      await applyMovement(tx, ctx, {
+      const cur = byProduct.get(l.p.id);
+      byProduct.set(l.p.id, { name: l.p.name, quantity: (cur?.quantity ?? 0) + l.quantity });
+    }
+    for (const [productId, { name, quantity }] of [...byProduct.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      const after = await applyMovement(tx, ctx, {
         storeId: ctx.storeId,
-        productId: l.p.id,
+        productId,
         type: "sale",
-        quantity: -l.quantity,
+        quantity: -quantity,
         referenceType: "sale",
         referenceId: sale.id,
         reason: number,
       });
+      if (after < 0 && !ctx.company.allowNegativeStock) {
+        throw new BusinessError(`Stock insuffisant pour « ${name} » : ${Math.round((after + quantity) * 1000) / 1000} disponible(s)`);
+      }
     }
-
     // Répartit le montant encaissé entre les moyens de paiement (la monnaie est retirée du dernier)
     let remaining = paid;
     for (const p of tendered) {
@@ -234,6 +248,8 @@ export async function listSales(ctx: AppContext, opts: { page?: number; from?: D
     if (opts.from) conds.push(gte(sales.createdAt, opts.from));
     if (opts.to) conds.push(lt(sales.createdAt, opts.to));
     if (opts.customerId) conds.push(eq(sales.customerId, opts.customerId));
+    // Sans « ventes de tous les vendeurs », chacun ne voit que ses propres ventes.
+    if (!ctxCan(ctx, "sales.view_all")) conds.push(eq(sales.userId, ctx.userId));
     const where = conds.length ? and(...conds) : undefined;
     const rows = await tx
       .select({
@@ -271,7 +287,7 @@ export async function getSale(ctx: AppContext, id: string) {
       .leftJoin(users, eq(users.id, sales.userId))
       .innerJoin(stores, eq(stores.id, sales.storeId))
       .where(eq(sales.id, id));
-    if (!row) throw new NotFoundError("Vente");
+    if (!row || (!ctxCan(ctx, "sales.view_all") && row.sale.userId !== ctx.userId)) throw new NotFoundError("Vente");
     const items = await tx.select().from(saleItems).where(eq(saleItems.saleId, id));
     const pays = await tx
       .select({ id: payments.id, amount: payments.amount, method: paymentMethods.label, createdAt: payments.createdAt, reference: payments.reference })

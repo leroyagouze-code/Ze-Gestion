@@ -2,13 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Field } from "@/components/ui";
-import { getContext } from "@/lib/auth/server";
+import { getContext, getSession } from "@/lib/auth/server";
 import { loginAction } from "../actions";
 
 export const metadata = { title: "Connexion" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  if (await getContext()) redirect("/dashboard");
+  if ((await getSession())?.mustChangePassword || (await getContext())) redirect("/");
   const { error } = await searchParams;
   return (
     <div className="card p-6">

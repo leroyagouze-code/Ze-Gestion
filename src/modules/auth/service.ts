@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   companies,
@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { withTenant, withUser } from "@/db/tenant";
 import { audit } from "@/lib/audit";
+import { getCountry, isTimeZone } from "@/lib/countries";
 import { DEFAULT_ROLES } from "@/lib/permissions";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
@@ -22,7 +23,9 @@ import {
   createSession,
   isRateLimited,
   recordFailedAttempt,
+  deleteUserSessions,
 } from "@/lib/auth/session";
+import { z } from "zod";
 import { DEFAULT_SEQUENCES } from "@/modules/settings/sequences";
 import { loginSchema, signupSchema, type SignupInput } from "./schemas";
 
@@ -40,6 +43,19 @@ export const DEFAULT_PAYMENT_METHODS = [
 ] as const;
 
 const TRIAL_DAYS = 14;
+const HOUR = 3600_000;
+
+/**
+ * Limites anti-force brute, en plus du couple IP + email (5 échecs / 15 min) :
+ * - par compte, quelle que soit l'IP (attaque distribuée) ;
+ * - par IP, quel que soit l'email (balayage de comptes, et chaque essai coûte 19 Mo d'argon2) ;
+ * - inscriptions par IP (création massive d'entreprises).
+ */
+export const LIMITS = {
+  account: { max: 20, windowMs: HOUR },
+  ip: { max: 50, windowMs: 15 * 60_000 },
+  signup: { max: 5, windowMs: HOUR },
+} as const;
 
 let _dummy: Promise<string> | null = null;
 const dummyHash = () => (_dummy ??= hashPassword("dummy-password-for-timing"));
@@ -47,6 +63,11 @@ const dummyHash = () => (_dummy ??= hashPassword("dummy-password-for-timing"));
 /** Inscription : crée l'entreprise, l'administrateur et tout l'espace de travail par défaut. */
 export async function signup(raw: SignupInput, meta: { ip?: string | null; userAgent?: string | null } = {}) {
   const input = signupSchema.parse(raw);
+  // Sans IP connue (scripts, tests), pas de limite : une clé commune bloquerait tout le monde
+  const signupKey = meta.ip ? `signup:${meta.ip}` : null;
+  if (signupKey && (await isRateLimited(signupKey, LIMITS.signup.max, LIMITS.signup.windowMs))) {
+    throw new AuthError("Trop d'inscriptions depuis cette connexion. Réessayez plus tard.");
+  }
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
   if (existing.length) throw new AuthError("Un compte existe déjà avec cet email");
 
@@ -66,6 +87,7 @@ export async function signup(raw: SignupInput, meta: { ip?: string | null; userA
       city: input.city,
       country: input.country,
       currency: input.currency,
+      timezone: input.timezone && isTimeZone(input.timezone) ? input.timezone : (getCountry(input.country)?.timezone ?? "UTC"),
       taxId: input.taxId,
       billingAddress: input.billingAddress,
       extraInfo: input.extraInfo,
@@ -90,10 +112,16 @@ export async function signup(raw: SignupInput, meta: { ip?: string | null; userA
       .returning({ id: stores.id });
 
     await tx.insert(memberships).values({ companyId, userId, roleId: adminRole.id, storeId: store.id, isOwner: true });
-    await tx.insert(taxes).values([
-      { companyId, name: "TVA 18 %", rate: 18, isDefault: true },
-      { companyId, name: "Exonéré", rate: 0 },
-    ]);
+    // TVA de départ selon le pays (taux standard connu), sinon « Exonéré » seul, à compléter
+    const vat = getCountry(input.country)?.vat;
+    await tx.insert(taxes).values(
+      vat
+        ? [
+            { companyId, name: `TVA ${String(vat).replace(".", ",")} %`, rate: vat, isDefault: true },
+            { companyId, name: "Exonéré", rate: 0 },
+          ]
+        : [{ companyId, name: "Exonéré", rate: 0, isDefault: true }],
+    );
     await tx
       .insert(paymentMethods)
       .values(DEFAULT_PAYMENT_METHODS.map((p, i) => ({ companyId, ...p, sortOrder: i })));
@@ -114,6 +142,7 @@ export async function signup(raw: SignupInput, meta: { ip?: string | null; userA
     await audit(tx, { companyId, userId, action: "company.created", entityType: "company", entityId: companyId, ip: meta.ip });
   });
 
+  if (signupKey) await recordFailedAttempt(signupKey, LIMITS.signup.windowMs); // compte les inscriptions réussies
   const session = await createSession({ userId, companyId, ...meta });
   return { userId, companyId, session };
 }
@@ -124,7 +153,13 @@ export async function login(
 ) {
   const input = loginSchema.parse(raw);
   const key = `${meta.ip ?? "?"}:${input.email}`;
-  if (await isRateLimited(key)) {
+  const accountKey = `acct:${input.email}`;
+  const ipKey = meta.ip ? `ip:${meta.ip}` : null;
+  if (
+    (await isRateLimited(key)) ||
+    (await isRateLimited(accountKey, LIMITS.account.max, LIMITS.account.windowMs)) ||
+    (ipKey !== null && (await isRateLimited(ipKey, LIMITS.ip.max, LIMITS.ip.windowMs)))
+  ) {
     throw new AuthError("Trop de tentatives. Réessayez dans 15 minutes.");
   }
   const [user] = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
@@ -132,9 +167,12 @@ export async function login(
   const ok = await verifyPassword(user?.passwordHash ?? (await dummyHash()), input.password);
   if (!user || !ok) {
     await recordFailedAttempt(key);
+    await recordFailedAttempt(accountKey, LIMITS.account.windowMs);
+    if (ipKey) await recordFailedAttempt(ipKey, LIMITS.ip.windowMs);
     throw new AuthError("Email ou mot de passe incorrect");
   }
   await clearAttempts(key);
+  await clearAttempts(accountKey);
 
   const companyIds = await listUserCompanyIds(user.id);
   const companyId = companyIds[0] ?? null;
@@ -148,13 +186,43 @@ export async function login(
   return { userId: user.id, companyId, isSuperAdmin: user.isSuperAdmin, session };
 }
 
+export const passwordSchema = z.string().min(8, "8 caractères minimum").max(200, "200 caractères maximum");
+
+/**
+ * Changement de mot de passe par l'utilisateur lui-même. Vérifie l'ancien mot de passe,
+ * lève l'obligation de changement et ferme ses autres sessions (autres appareils).
+ */
+export async function changePassword(
+  user: { userId: string; companyId: string | null; ip?: string | null },
+  raw: { current: string; next: string; confirm: string },
+  keepToken: string,
+) {
+  const next = passwordSchema.parse(raw.next);
+  if (next !== raw.confirm) throw new AuthError("Les deux nouveaux mots de passe ne correspondent pas");
+  if (next === raw.current) throw new AuthError("Choisissez un mot de passe différent de l'actuel");
+  const [u] = await db.select().from(users).where(eq(users.id, user.userId)).limit(1);
+  if (!u || !(await verifyPassword(u.passwordHash, raw.current))) throw new AuthError("Mot de passe actuel incorrect");
+  await db
+    .update(users)
+    .set({ passwordHash: await hashPassword(next), mustChangePassword: false, passwordChangedAt: new Date() })
+    .where(eq(users.id, u.id));
+  await deleteUserSessions(u.id, keepToken);
+  if (user.companyId) {
+    await withTenant({ companyId: user.companyId, userId: u.id }, (tx) =>
+      audit(tx, { companyId: user.companyId, userId: u.id, action: "auth.password_changed", entityType: "user", entityId: u.id, ip: user.ip }),
+    );
+  }
+}
+
 export async function listUserCompanyIds(userId: string) {
   const rows = await withUser(userId, (tx) =>
     tx
       .select({ companyId: memberships.companyId })
       .from(memberships)
       .innerJoin(companies, eq(companies.id, memberships.companyId))
-      .where(and(eq(memberships.userId, userId), eq(memberships.isActive, true), eq(companies.status, "active"))),
+      .where(and(eq(memberships.userId, userId), eq(memberships.isActive, true), eq(companies.status, "active")))
+      // Ordre stable : toujours la même entreprise à la connexion (la plus ancienne adhésion)
+      .orderBy(asc(memberships.createdAt)),
   );
   return rows.map((r) => r.companyId);
 }
