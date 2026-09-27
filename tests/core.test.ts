@@ -149,3 +149,13 @@ describe("authentification", () => {
 });
 
 void sql;
+
+describe("taxes", () => {
+  it("applique la TVA par défaut quand aucune taxe n'est précisée", async () => {
+    const ctx = await newCompany();
+    const pid = await createProduct(ctx, { name: "Lait", salePrice: 1180 });
+    const [p] = await searchForPos(ctx, "Lait");
+    expect(p.id).toBe(pid);
+    expect(p.taxRate).toBe(18);
+  });
+});

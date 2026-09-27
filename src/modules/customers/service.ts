@@ -123,3 +123,8 @@ export async function recordCustomerPayment(ctx: AppContext, raw: z.input<typeof
     return amount;
   });
 }
+
+export async function customerOptions(ctx: AppContext) {
+  ctxAssert(ctx, "customers.view");
+  return withTenant(ctx, (tx) => tx.select({ id: customers.id, name: customers.name }).from(customers).orderBy(customers.name).limit(2000));
+}

@@ -126,7 +126,7 @@ export async function receiptPdf(
   const logo = await logoSrc(company);
   const m = (v: number) => formatMoney(v, company.currency);
   const width = company.receiptFormat === "58mm" ? 164 : 226; // points (1 mm ≈ 2.83 pt)
-  const height = 260 + items.length * 26 + pays.length * 12 + (logo ? 50 : 0);
+  const height = 190 + items.length * 24 + pays.length * 11 + (logo ? 50 : 0) + (extra.customer ? 10 : 0);
   const t = StyleSheet.create({ p: { padding: 8, fontSize: 7.5, fontFamily: "Helvetica" }, c: { textAlign: "center" }, line: { borderBottomWidth: 0.5, borderBottomStyle: "dashed", borderBottomColor: "#000", marginVertical: 4 } });
   const doc = (
     <Document title={`Ticket ${sale.number}`}>

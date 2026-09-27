@@ -17,10 +17,10 @@ export function PeriodFilter({ current, from, to }: { current: PeriodKey; from?:
           </Link>
         ))}
       </div>
-      <form className="flex items-center gap-2">
+      <form className="flex w-full items-center gap-2 lg:w-auto">
         <input type="hidden" name="period" value="custom" />
-        <input type="date" name="from" defaultValue={from} className="input w-auto" aria-label="Du" />
-        <input type="date" name="to" defaultValue={to} className="input w-auto" aria-label="Au" />
+        <input type="date" name="from" defaultValue={from} className="input min-w-0 flex-1 lg:w-40 lg:flex-none" aria-label="Du" />
+        <input type="date" name="to" defaultValue={to} className="input min-w-0 flex-1 lg:w-40 lg:flex-none" aria-label="Au" />
         <button className={clsx("btn-secondary", current === "custom" && "ring-2 ring-brand-500")}>OK</button>
       </form>
     </div>

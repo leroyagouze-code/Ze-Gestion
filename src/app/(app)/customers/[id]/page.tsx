@@ -9,7 +9,7 @@ import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { getCustomer } from "@/modules/customers/service";
 import { INVOICE_STATUS } from "@/modules/invoices/labels";
-import { posBootstrap } from "@/modules/sales/service";
+import { listPaymentMethods } from "@/modules/sales/service";
 import { customerPaymentAction, updateCustomerAction } from "../actions";
 import { CustomerForm } from "../customer-form";
 
@@ -23,7 +23,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const c = data.customer;
   const m = (v: number) => formatMoney(v, ctx.company.currency);
   const canPay = can(ctx.permissions, "sales.create") && c.balanceDue > 0;
-  const methods = canPay ? (await posBootstrap(ctx)).paymentMethods.filter((p) => p.type !== "credit") : [];
+  const methods = canPay ? await listPaymentMethods(ctx, { excludeCredit: true }) : [];
   const wa = (c.whatsapp || c.phone)?.replace(/[^\d]/g, "");
   return (
     <>

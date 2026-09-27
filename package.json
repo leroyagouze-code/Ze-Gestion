@@ -1,5 +1,5 @@
 {
-  "name": "gestion-saas",
+  "name": "ze-gestion",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,11 +7,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts",
+    "db:seed": "tsx --tsconfig tsconfig.json scripts/seed.ts",
     "test": "vitest run"
   },
   "dependencies": {

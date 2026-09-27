@@ -1,6 +1,6 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const fmt = (v: number) => new Intl.NumberFormat("fr-FR", { notation: "compact", maximumFractionDigits: 1 }).format(v);
 const full = (v: number) => new Intl.NumberFormat("fr-FR").format(v).replace(/ /g, " ");
@@ -24,18 +24,22 @@ export function RevenueChart({ data, currency }: { data: { date: string; revenue
   );
 }
 
-export function TopProductsChart({ data }: { data: { name: string; revenue: number }[] }) {
+export function TopProductsChart({ data }: { data: { name: string; revenue: number; quantity?: number }[] }) {
   if (!data.length) return <p className="py-10 text-center text-sm text-slate-500">Aucune vente sur la période.</p>;
+  const max = Math.max(...data.map((d) => d.revenue), 1);
   return (
-    <div className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-          <XAxis type="number" hide />
-          <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 12, fill: "#334155" }} tickLine={false} axisLine={false} />
-          <Tooltip formatter={(v) => [full(Number(v)), "CA"]} />
-          <Bar dataKey="revenue" fill="#14b8a6" radius={[0, 4, 4, 0]} barSize={18} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <ul className="space-y-3">
+      {data.map((d) => (
+        <li key={d.name}>
+          <div className="mb-1 flex justify-between gap-2 text-sm">
+            <span className="truncate">{d.name}</span>
+            <span className="shrink-0 font-medium">{full(d.revenue)}</span>
+          </div>
+          <div className="h-2 rounded-full bg-slate-100">
+            <div className="h-2 rounded-full bg-brand-500" style={{ width: `${(d.revenue / max) * 100}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

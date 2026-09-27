@@ -305,3 +305,15 @@ export async function posBootstrap(ctx: AppContext) {
       .limit(1000),
   }));
 }
+
+/** Moyens de paiement actifs (données de configuration, lisibles par tout membre). */
+export async function listPaymentMethods(ctx: AppContext, opts: { excludeCredit?: boolean } = {}) {
+  const rows = await withTenant(ctx, (tx) =>
+    tx
+      .select({ id: paymentMethods.id, label: paymentMethods.label, type: paymentMethods.type })
+      .from(paymentMethods)
+      .where(eq(paymentMethods.isEnabled, true))
+      .orderBy(paymentMethods.sortOrder),
+  );
+  return opts.excludeCredit ? rows.filter((r) => r.type !== "credit") : rows;
+}

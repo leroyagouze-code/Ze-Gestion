@@ -142,6 +142,11 @@ export async function createProduct(ctx: AppContext, raw: ProductInput) {
   ctxAssert(ctx, "products.edit");
   const input = productSchema.parse(raw);
   return withTenant(ctx, async (tx) => {
+    // Sans taxe précisée (API, import), on applique la taxe par défaut de l'entreprise
+    if (raw.taxId === undefined) {
+      const [def] = await tx.select({ id: taxes.id }).from(taxes).where(eq(taxes.isDefault, true)).limit(1);
+      input.taxId = def?.id ?? null;
+    }
     const id = await createInTx(tx, ctx, input).catch(mapUniqueError);
     await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "product.created", entityType: "product", entityId: id, metadata: { name: input.name }, ip: ctx.ip });
     return id;
