@@ -22,6 +22,7 @@ import {
   X,
   Shield,
 } from "lucide-react";
+import { Logo } from "./logo";
 
 const ICONS = {
   dashboard: LayoutDashboard,
@@ -96,7 +97,7 @@ export function AppShell({
     <div className="min-h-dvh lg:flex">
       <aside className="no-print hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-dvh">
         <div className="border-b border-slate-200 px-4 py-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">GestionPro</div>
+          <Logo size={28} className="mb-2 text-sm" />
           <div className="truncate font-semibold">{companyName}</div>
         </div>
         {nav}
@@ -106,7 +107,10 @@ export function AppShell({
         <button aria-label="Menu" onClick={() => setOpen(true)} className="btn-ghost px-2">
           <Menu size={20} />
         </button>
-        <span className="truncate font-semibold">{companyName}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <Logo size={24} showName={false} />
+          <span className="truncate font-semibold">{companyName}</span>
+        </span>
         <Link href="/pos" className="btn-primary px-3 py-1.5">
           <ShoppingCart size={16} /> Caisse
         </Link>
@@ -116,7 +120,10 @@ export function AppShell({
           <div className="absolute inset-0 bg-slate-900/40" onClick={() => setOpen(false)} />
           <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <span className="truncate font-semibold">{companyName}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <Logo size={24} showName={false} />
+                <span className="truncate font-semibold">{companyName}</span>
+              </span>
               <button aria-label="Fermer" onClick={() => setOpen(false)} className="btn-ghost px-2">
                 <X size={20} />
               </button>

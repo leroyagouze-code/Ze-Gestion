@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
+import { APP_NAME } from "@/lib/brand";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "GestionPro", template: "%s · GestionPro" },
+  title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
+  applicationName: APP_NAME,
   description: "Gestion commerciale en ligne : caisse, stock, factures, clients et rapports.",
 };
 
