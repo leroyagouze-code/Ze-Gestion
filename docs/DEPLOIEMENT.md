@@ -47,8 +47,9 @@ Renseigner :
 
 - `DOMAIN` : le sous-domaine de l'étape 1.
 - `DB_OWNER_PASSWORD` et `DB_APP_PASSWORD` : deux mots de passe différents, générés avec `openssl rand -hex 24`.
+- `BACKUP_PASSPHRASE` : la clé de chiffrement des sauvegardes, générée avec `openssl rand -hex 32`.
 
-Garder une copie de ce fichier en lieu sûr (gestionnaire de mots de passe) : sans lui, les sauvegardes restent lisibles mais l'application ne peut plus se connecter.
+Protégez le fichier (`chmod 600 deploy/.env`) et gardez-en une copie **hors du serveur**, dans un gestionnaire de mots de passe. Sans `BACKUP_PASSPHRASE`, les sauvegardes sont illisibles, y compris pour vous.
 
 ## 4. Lancer
 
@@ -88,16 +89,23 @@ Les migrations s'appliquent automatiquement avant le redémarrage de l'applicati
 
 ## Sauvegardes
 
-- Une sauvegarde complète de la base est écrite chaque jour dans `deploy/backups/` (fichiers `gestion-AAAAMMJJ-HHMM.sql.gz`), conservée 14 jours.
+- Une sauvegarde complète de la base est écrite chaque jour dans `deploy/backups/` (fichiers `gestion-AAAAMMJJ-HHMM.sql.gz.enc`) et conservée 14 jours. Elle est chiffrée en AES-256 et lisible par root seulement.
 - Les logos et justificatifs sont dans le volume Docker `ze-gestion_uploads`.
-- **Copiez-les aussi hors du serveur** : par exemple une synchronisation quotidienne vers un stockage objet (Backblaze B2, OVH Object Storage) avec `rclone`. Une sauvegarde qui reste sur la même machine ne protège pas contre la perte du serveur.
+- **Copiez-les aussi hors du serveur** : par exemple une synchronisation quotidienne vers un stockage objet (Backblaze B2, OVH Object Storage) avec `rclone`. Une sauvegarde qui reste sur la même machine ne protège pas contre la perte du serveur. Exemple, une fois `rclone config` fait avec un stockage nommé `distant` :
+
+  ```bash
+  # crontab -e (root) : copie chaque nuit à 3 h ; les fichiers sont déjà chiffrés
+  0 3 * * * rclone copy /opt/ze-gestion/deploy/backups distant:ze-gestion-sauvegardes --max-age 48h
+  ```
 
 Restaurer une sauvegarde (écrase les données actuelles) :
 
 ```bash
 docker compose -f deploy/docker-compose.prod.yml stop app
 docker compose -f deploy/docker-compose.prod.yml exec -T db psql -U app_owner -d postgres -c "drop database gestion with (force)" -c "create database gestion"
-zcat deploy/backups/gestion-AAAAMMJJ-HHMM.sql.gz | docker compose -f deploy/docker-compose.prod.yml exec -T db psql -U app_owner gestion
+set -a; . deploy/.env; set +a
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:BACKUP_PASSPHRASE -in deploy/backups/gestion-AAAAMMJJ-HHMM.sql.gz.enc \
+  | gunzip | docker compose -f deploy/docker-compose.prod.yml exec -T db psql -U app_owner gestion
 docker compose -f deploy/docker-compose.prod.yml start app
 ```
 

@@ -43,5 +43,5 @@ jobs:
         run: docker build --target run -t ze-gestion-app .
       - name: Vérifier la configuration de déploiement
         run: |
-          printf 'DOMAIN=example.com\nDB_OWNER_PASSWORD=x\nDB_APP_PASSWORD=y\n' > deploy/.env
+          printf 'DOMAIN=example.com\nDB_OWNER_PASSWORD=x\nDB_APP_PASSWORD=y\nBACKUP_PASSPHRASE=z\n' > deploy/.env
           docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env config -q
