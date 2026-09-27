@@ -12,7 +12,6 @@ def keystorePath = System.getenv("ZE_KEYSTORE")
 android {
     namespace "com.zegroup.gestion"
     compileSdk 35
-    ndkVersion System.getenv("ZE_NDK_VERSION") ?: "27.2.12479018"
 
     defaultConfig {
         applicationId "com.zegroup.gestion"
@@ -20,15 +19,9 @@ android {
         targetSdk 35
         versionCode version.versionCode
         versionName version.versionName
-        externalNativeBuild {
-            cmake {
-                cppFlags "-std=c++17"
-                arguments "-DANDROID_STL=c++_shared"
-            }
-        }
     }
 
-    // Un APK par processeur : libnode pèse ~40 Mo par architecture
+    // Un APK par processeur : Node et ses bibliothèques pèsent ~40 Mo par architecture
     splits {
         abi {
             enable true
@@ -54,22 +47,12 @@ android {
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path "src/main/cpp/CMakeLists.txt"
-        }
-    }
-
-    sourceSets {
-        main {
-            // libnode/bin/<abi>/libnode.so (nodejs-mobile), téléchargé par la CI
-            jniLibs.srcDirs = ["libnode/bin"]
-        }
-    }
-
+    // jniLibs/<abi>/libzn_*.so (Node de Termux, voir build/fetch-node.mjs) : extraits sur le téléphone,
+    // seul dossier d'où Android permet de lancer un programme
     packagingOptions {
         jniLibs {
             useLegacyPackaging true
+            keepDebugSymbols += "**/libzn_*.so"
         }
     }
 

@@ -1,4 +1,4 @@
-// Démarre ZE Gestion sur Android, dans le Node de nodejs-mobile (un seul processus, pas de fork) :
+// Démarre ZE Gestion sur Android (Node de Termux lancé par l'appli, un seul processus, pas de fork) :
 //   base PostgreSQL embarquée (PGlite, WebAssembly) servie en local, migrations, puis serveur Next.js.
 // Usage : node main.cjs <dossier de données>. Quand l'appli répond, écrit <données>/ready.json { url }.
 // Testable sur un PC : node main.cjs /tmp/ze-android
@@ -7,19 +7,6 @@ const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
-
-// Node 18 (nodejs-mobile) : CustomEvent n'est pas global, pglite-socket s'en sert
-if (typeof globalThis.CustomEvent === "undefined") {
-  globalThis.CustomEvent = class CustomEvent extends Event {
-    constructor(type, init = {}) {
-      super(type, init);
-      this.detail = init.detail ?? null;
-    }
-  };
-}
-
-// Node 18 : File n'est pas global (formulaires avec fichier dans Next.js)
-if (typeof globalThis.File === "undefined") globalThis.File = require("node:buffer").File;
 
 const here = __dirname;
 const dataDir = path.resolve(process.argv[2] || process.env.ZE_DATA_DIR || path.join(here, "data"));
@@ -33,6 +20,45 @@ const log = (m) => {
 };
 const readyFile = path.join(dataDir, "ready.json");
 fs.rmSync(readyFile, { force: true });
+
+// Lancé par l'appli Android : l'entrée standard se ferme quand l'appli s'arrête, Node s'arrête avec elle
+if (process.env.ZE_PARENT_PIPE) {
+  process.stdin.on("end", () => process.exit(0));
+  process.stdin.on("error", () => process.exit(0));
+  process.stdin.resume();
+}
+
+// Deux Node sur la même base la corrompent : un Node resté d'un lancement précédent est arrêté d'abord
+async function takeLock() {
+  const pidFile = path.join(dataDir, "node.pid");
+  let old = 0;
+  try {
+    old = Number(fs.readFileSync(pidFile, "utf8"));
+  } catch {}
+  // Numéro réutilisé par un autre programme (l'appli elle-même par exemple) : on n'y touche pas.
+  // Next.js renomme son processus « next-server », d'où les deux noms.
+  const alive = (pid) => {
+    try {
+      return /main\.cjs|next-server/.test(fs.readFileSync(`/proc/${pid}/cmdline`, "utf8"));
+    } catch {
+      return false;
+    }
+  };
+  if (old && old !== process.pid && alive(old)) {
+    log(`Arrêt de l'ancien processus ${old}`);
+    try {
+      process.kill(old, "SIGTERM");
+    } catch {}
+    for (let i = 0; i < 50 && alive(old); i++) await new Promise((r) => setTimeout(r, 100));
+    if (alive(old)) {
+      try {
+        process.kill(old, "SIGKILL");
+      } catch {}
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+  fs.writeFileSync(pidFile, String(process.pid));
+}
 
 function loadConfig() {
   const file = path.join(dataDir, "config.json");
@@ -112,6 +138,7 @@ async function migrate(port) {
 
 async function main() {
   log(`Démarrage de ZE Gestion ${pkg.version ?? ""} (Node ${process.version}, ${process.platform}/${process.arch})`);
+  await takeLock();
   const cfg = loadConfig();
   const database = await startDatabase();
   await migrate(database.port);

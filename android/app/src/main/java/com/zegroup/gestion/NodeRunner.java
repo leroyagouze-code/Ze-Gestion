@@ -14,17 +14,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/** Installe l'application Node (assets/app.zip) puis lance Node une seule fois par processus. */
+/**
+ * Installe l'application Node (assets/app.zip) puis lance Node une seule fois par processus.
+ * Node est un programme (libzn_node.so, extrait par Android dans le dossier des bibliothèques natives) ;
+ * son entrée standard reste ouverte tant que l'appli vit : quand Android arrête l'appli, Node s'arrête aussi.
+ */
 final class NodeRunner {
     private static final String TAG = "ZEGestion";
     private static boolean started = false;
-
-    static {
-        System.loadLibrary("node");
-        System.loadLibrary("native-lib");
-    }
-
-    private static native int startNode(String[] arguments);
+    private static Process process;
 
     interface Progress {
         void step(String message);
@@ -42,7 +40,7 @@ final class NodeRunner {
         return started;
     }
 
-    /** À appeler hors du fil de l'interface : décompresse si l'appli a changé, puis lance Node (ne rend jamais la main). */
+    /** À appeler hors du fil de l'interface : décompresse si l'appli a changé, puis lance Node et relaie sa sortie dans logcat. */
     static void start(Context ctx, Progress progress) throws IOException {
         synchronized (NodeRunner.class) {
             if (started) return;
@@ -66,9 +64,34 @@ final class NodeRunner {
         //noinspection ResultOfMethodCallIgnored
         readyFile(ctx).delete();
         progress.step("Démarrage…");
-        Log.i(TAG, "Lancement de Node");
-        int code = startNode(new String[] {"node", new File(project, "main.cjs").getAbsolutePath(), data.getAbsolutePath()});
-        Log.e(TAG, "Node s'est arrêté, code " + code);
+        String libs = ctx.getApplicationInfo().nativeLibraryDir;
+        Log.i(TAG, "Lancement de Node depuis " + libs);
+        ProcessBuilder pb = new ProcessBuilder(libs + "/libzn_node.so", new File(project, "main.cjs").getAbsolutePath(), data.getAbsolutePath())
+                .directory(project)
+                .redirectErrorStream(true);
+        pb.environment().put("LD_LIBRARY_PATH", libs);
+        pb.environment().put("HOME", ctx.getFilesDir().getAbsolutePath());
+        pb.environment().put("TMPDIR", ctx.getCacheDir().getAbsolutePath());
+        pb.environment().put("ZE_PARENT_PIPE", "1");
+        pb.environment().put("ZE_APP_VERSION", appVersion(ctx));
+        process = pb.start();
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) Log.i("ZEGestionNode", line);
+        }
+        try {
+            Log.e(TAG, "Node s'est arrêté, code " + process.waitFor());
+        } catch (InterruptedException ignored) {
+            // appli en cours d'arrêt
+        }
+    }
+
+    private static String appVersion(Context ctx) {
+        try {
+            return ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private static void unzip(AssetManager assets, String name, File dest) throws IOException {

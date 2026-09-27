@@ -2,7 +2,6 @@ build/nodejs-project/
 app/src/main/assets/app.zip
 app/src/main/assets/app.version
 app/src/main/jniLibs/
-app/libnode/
 app/build/
 .gradle/
 local.properties
