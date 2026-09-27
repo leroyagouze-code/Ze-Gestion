@@ -118,6 +118,53 @@ export const licenseIssues = pgTable("license_issues", {
   createdAt: createdAt(),
 });
 
+/** Tarifs des licences du logiciel de bureau, modifiables par le super admin. duration : "1", "3", "6", "12" (mois) ou "life". */
+export const licensePrices = pgTable(
+  "license_prices",
+  {
+    id: id(),
+    plan: text("plan").notNull(),
+    duration: text("duration").notNull(),
+    amount: money("amount").notNull(),
+    currency: text("currency").notNull().default("XOF"),
+    isActive: boolean("is_active").notNull().default(true),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("license_prices_plan_duration_idx").on(t.plan, t.duration)],
+);
+
+/**
+ * Achats de licence en ligne : le client paie (PayGate ou simulation) et le serveur fabrique la clé
+ * dès que le paiement est confirmé. Table de la plateforme, lue par le super admin.
+ */
+export const licenseOrders = pgTable(
+  "license_orders",
+  {
+    id: id(),
+    reference: text("reference").notNull().unique(),
+    installId: text("install_id").notNull(),
+    plan: text("plan").notNull(),
+    duration: text("duration").notNull(),
+    amount: money("amount").notNull(),
+    currency: text("currency").notNull().default("XOF"),
+    customerName: text("customer_name").notNull(),
+    phone: text("phone").notNull(),
+    email: text("email"),
+    network: text("network"),
+    provider: text("provider").notNull(), // "paygate" | "simulation"
+    status: text("status").notNull().default("pending"), // pending | paid | failed | cancelled
+    providerRef: text("provider_ref"),
+    paymentRef: text("payment_ref"),
+    failureReason: text("failure_reason"),
+    licenseIssueId: uuid("license_issue_id").references(() => licenseIssues.id, { onDelete: "set null" }),
+    code: text("code"),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("license_orders_install_idx").on(t.installId, t.createdAt), index("license_orders_status_idx").on(t.status, t.createdAt)],
+);
+
 /**
  * Installations signalées par le logiciel Windows et les postes en ligne (hors données des clients) :
  * table de la plateforme, lue seulement par le super admin.

@@ -5,8 +5,9 @@ import { Badge, Card, PageHeader } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { isDesktop } from "@/lib/license";
-import { installId } from "@/modules/billing/license";
-import { activateLicenseAction } from "./actions";
+import { installId, serverUrl } from "@/modules/billing/license";
+import { activateLicenseAction, fetchLicenseAction } from "./actions";
+import { FetchLicense } from "./fetch-license";
 
 export const metadata = { title: "Licence" };
 
@@ -16,6 +17,7 @@ export default async function LicencePage() {
   const s = ctx.subscription;
   const id = installId();
   const licensed = s.status === "active";
+  const server = serverUrl();
   return (
     <>
       <PageHeader title="Licence du logiciel" subtitle="Activez ZE Gestion sur cet ordinateur avec le code reçu de ZE GROUP." />
@@ -40,11 +42,26 @@ export default async function LicencePage() {
             <p className="text-slate-500">Vos données restent sur cet ordinateur. Sans licence valide, elles restent consultables et exportables.</p>
           </div>
         </Card>
-        <Card title="1. Code d'installation de cet ordinateur">
-          <p className="mb-3 text-sm text-slate-600">Envoyez ce code à ZE GROUP avec la formule et la durée choisies. Il est propre à cet ordinateur.</p>
+        <Card title="Code d'installation de cet ordinateur">
+          <p className="mb-3 text-sm text-slate-600">Il est propre à cet ordinateur : la licence achetée pour ce code ne fonctionne que sur lui.</p>
           <CopyText value={id} whatsappText={`Bonjour ZE GROUP, je souhaite une licence ZE Gestion pour « ${ctx.company.name} ». Code d'installation : ${id}`} />
         </Card>
-        <Card title="2. Saisir le code de licence reçu" className="xl:col-span-2">
+        {server ? (
+          <Card title="Acheter ou renouveler en ligne">
+            <p className="mb-3 text-sm text-slate-600">
+              Paiement par TMoney ou Flooz. Dès que le paiement est confirmé, la licence s&apos;active toute seule sur cet ordinateur (il faut internet à ce moment-là).
+            </p>
+            <div className="space-y-2">
+              <a href={`${server}/acheter-licence?code=${encodeURIComponent(id)}`} target="_blank" rel="noreferrer" className="btn-primary w-full">Acheter une licence</a>
+              <FetchLicense action={fetchLicenseAction} auto={!licensed || s.readOnly} />
+            </div>
+          </Card>
+        ) : (
+          <Card title="Acheter une licence">
+            <p className="text-sm text-slate-600">Envoyez le code d&apos;installation à ZE GROUP avec la formule et la durée choisies, puis saisissez ci-dessous le code reçu.</p>
+          </Card>
+        )}
+        <Card title="Saisir un code de licence reçu" className="xl:col-span-2">
           <ActionForm action={activateLicenseAction} className="space-y-3" resetOnSuccess>
             <textarea
               name="code"

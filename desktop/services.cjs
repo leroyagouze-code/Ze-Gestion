@@ -164,8 +164,8 @@ async function startServices({ resourcesDir, dataDir, pgBin, log = () => {} }) {
         ZE_EDITION: "desktop",
         ZE_INSTALL_ID: cfg.installId,
         ZE_APP_VERSION: pkg.version,
-        // Serveur en ligne qui reçoit le signal d'installation (vide = aucun envoi)
-        ZE_SERVER_URL: process.env.ZE_SERVER_URL || pkg.zeGestion?.serverUrl || "",
+        // Serveur en ligne (signal d'installation, achat et récupération des licences). config.json → serverUrl le remplace pour les tests
+        ZE_SERVER_URL: process.env.ZE_SERVER_URL || cfg.serverUrl || pkg.zeGestion?.serverUrl || "",
       },
     });
     // Dernières lignes du serveur, reprises dans le message d'erreur

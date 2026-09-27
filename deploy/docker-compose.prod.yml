@@ -46,6 +46,8 @@ services:
       SUPPORT_CONTACT: ${SUPPORT_CONTACT:-}
       # Clé privée qui signe les licences du logiciel Windows (menu Super admin > Licences)
       LICENSE_PRIVATE_KEY: ${LICENSE_PRIVATE_KEY:-}
+      PAYMENT_MODE: ${PAYMENT_MODE:-}
+      PAYGATE_API_KEY: ${PAYGATE_API_KEY:-}
     volumes: [uploads:/data/uploads]
     depends_on:
       migrate: { condition: service_completed_successfully }

@@ -2,6 +2,7 @@ import os from "node:os";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { companies, subscriptions } from "@/db/schema";
+import { fetchLicenseFromServer } from "@/modules/billing/license";
 
 /**
  * Côté logiciel Windows : prévient le serveur en ligne que ce poste existe, au démarrage puis
@@ -11,7 +12,7 @@ const DAY = 86_400_000;
 
 async function reportOnce(serverUrl: string) {
   const [c] = await db
-    .select({ name: companies.name, country: companies.country, locale: companies.locale, timezone: companies.timezone, licenseCode: subscriptions.licenseCode })
+    .select({ id: companies.id, name: companies.name, country: companies.country, locale: companies.locale, timezone: companies.timezone, licenseCode: subscriptions.licenseCode })
     .from(companies)
     .leftJoin(subscriptions, eq(subscriptions.companyId, companies.id))
     .orderBy(asc(companies.createdAt))
@@ -33,6 +34,8 @@ async function reportOnce(serverUrl: string) {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15_000),
   });
+  // Licence achetée en ligne pour ce poste : activée sans que le client ait à saisir le code
+  if (c?.id) await fetchLicenseFromServer(c.id, null).catch(() => undefined);
 }
 
 export function startInstallReporting() {
@@ -40,5 +43,6 @@ export function startInstallReporting() {
   if (!serverUrl || !process.env.ZE_INSTALL_ID) return;
   const run = () => reportOnce(serverUrl).catch(() => undefined);
   setTimeout(run, 60_000).unref();
-  setInterval(run, DAY).unref();
+  // toutes les 6 heures : une licence payée pendant que le logiciel tourne s'active dans la journée
+  setInterval(run, DAY / 4).unref();
 }
