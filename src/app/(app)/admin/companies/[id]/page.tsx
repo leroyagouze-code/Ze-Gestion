@@ -30,7 +30,7 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
       <PageHeader
         title={c.name}
         subtitle={[c.ownerName, c.email, c.phone, [c.city, c.country].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
-        actions={<Link href="/admin" className="btn-secondary">Retour</Link>}
+        actions={<Link href="/admin/entreprises" className="btn-secondary">Retour</Link>}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">

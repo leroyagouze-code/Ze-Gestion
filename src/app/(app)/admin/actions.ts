@@ -6,6 +6,7 @@ import { runAction, type ActionState } from "@/lib/actions";
 import { getSession } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { issueLicense } from "@/modules/billing/license";
+import { savePrice } from "@/modules/billing/license-orders";
 import { grantFreeAccess, extendTrial, recordSubscriptionPayment, setCompanyPlan, setCompanyStatus, setUnlimited } from "@/modules/admin/service";
 
 async function admin() {
@@ -16,6 +17,7 @@ async function admin() {
 
 function refresh(companyId: string) {
   revalidatePath("/admin");
+  revalidatePath("/admin/entreprises");
   revalidatePath(`/admin/companies/${companyId}`);
 }
 
@@ -82,5 +84,14 @@ export async function grantFreeAccessAction(companyId: string, _s: ActionState, 
     const end = await grantFreeAccess(s, companyId, Object.fromEntries(fd));
     refresh(companyId);
     return end ? `Compte activé gratuitement jusqu'au ${formatDate(end)}` : "Compte activé gratuitement, sans limite";
+  });
+}
+
+export async function savePriceAction(_s: ActionState, fd: FormData): Promise<ActionState> {
+  const s = await admin();
+  return runAction(async () => {
+    await savePrice(s, Object.fromEntries(fd));
+    revalidatePath("/admin/licences");
+    return "Tarif enregistré";
   });
 }

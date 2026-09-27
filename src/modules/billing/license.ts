@@ -19,6 +19,10 @@ export const installId = () => process.env.ZE_INSTALL_ID ?? "";
 export async function activateLicense(ctx: Pick<AppContext, "companyId" | "userId" | "isAdmin" | "ip">, code: string) {
   if (!isDesktop()) throw new BusinessError("La licence ne concerne que le logiciel installé sur ordinateur");
   if (!ctx.isAdmin) throw new BusinessError("Seul l'administrateur peut activer la licence");
+  return applyLicense(ctx, code);
+}
+
+async function applyLicense(ctx: { companyId: string; userId: string | null; ip?: string | null }, code: string) {
   const license = verifyLicense(code, installId());
   if (!license) throw new BusinessError("Code invalide pour cet ordinateur. Vérifiez la saisie ou le code d'installation communiqué.");
   if (license.expiresAt && license.expiresAt.getTime() <= Date.now()) throw new BusinessError("Ce code a déjà expiré. Demandez un nouveau code.");
@@ -33,18 +37,44 @@ export async function activateLicense(ctx: Pick<AppContext, "companyId" | "userI
       ...(plan ? { planId: plan.id } : {}),
     })
     .where(eq(subscriptions.companyId, ctx.companyId));
-  await withTenant(ctx, (tx) =>
+  await withTenant({ companyId: ctx.companyId, userId: ctx.userId }, (tx) =>
     audit(tx, {
       companyId: ctx.companyId,
       userId: ctx.userId,
       action: "license.activate",
       entityType: "company",
       entityId: ctx.companyId,
-      metadata: { plan: license.plan, expiresAt: license.expiresAt?.toISOString() ?? null },
-      ip: ctx.ip,
+      metadata: { plan: license.plan, expiresAt: license.expiresAt?.toISOString() ?? null, auto: ctx.userId === null },
+      ip: ctx.ip ?? null,
     }),
   );
   return license;
+}
+
+/** Adresse du serveur en ligne de ZE GROUP (vide tant qu'il n'est pas configuré). */
+export const serverUrl = () => process.env.ZE_SERVER_URL?.replace(/\/+$/, "") ?? "";
+
+/**
+ * Demande au serveur en ligne la licence achetée pour ce poste et l'active si elle est nouvelle.
+ * Renvoie "none" si rien n'a été acheté, "same" si elle est déjà active, sinon la licence activée.
+ */
+export async function fetchLicenseFromServer(companyId: string, userId: string | null) {
+  const base = serverUrl();
+  const id = installId();
+  if (!base || !id) throw new BusinessError("Le serveur de ZE GROUP n'est pas configuré dans ce logiciel");
+  let body: { license?: { code: string } | null };
+  try {
+    const res = await fetch(`${base}/api/licences/poste/${encodeURIComponent(id)}`, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    if (res.status === 404) return "none" as const;
+    if (!res.ok) throw new Error(String(res.status));
+    body = await res.json();
+  } catch {
+    throw new BusinessError("Impossible de joindre le serveur de ZE GROUP. Vérifiez la connexion internet et réessayez.");
+  }
+  if (!body.license?.code) return "none" as const;
+  const [current] = await db.select({ code: subscriptions.licenseCode }).from(subscriptions).where(eq(subscriptions.companyId, companyId));
+  if (current?.code === normalizeCode(body.license.code)) return "same" as const;
+  return applyLicense({ companyId, userId }, body.license.code);
 }
 
 /* ─────────── Serveur en ligne : fabrication des codes par le super admin ─────────── */
