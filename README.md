@@ -4,7 +4,11 @@ Plateforme SaaS de gestion commerciale pour les commerces d'Afrique de l'Ouest :
 
 Architecture, schéma de base de données, permissions et stratégie de déploiement : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Démarrage local
+## Installer sur un ordinateur (sans être développeur)
+
+Double-cliquez sur `Demarrer-ZE-Gestion.bat` (Windows) ou `demarrer-ze-gestion.sh` (Mac, Linux) après avoir installé Docker Desktop. Guide pas à pas : [`docs/INSTALLATION-ORDINATEUR.md`](docs/INSTALLATION-ORDINATEUR.md).
+
+## Démarrage local (développeurs)
 
 Prérequis : Node.js 22, Docker (ou PostgreSQL 16 installé).
 
