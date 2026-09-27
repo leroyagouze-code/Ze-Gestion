@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const securityHeaders = [
@@ -10,6 +11,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // ze-loyer/ vit dans le dépôt Ze-Gestion (autre package-lock.json à la racine) : on fixe la racine du projet ici
+  outputFileTracingRoot: path.join(__dirname),
   serverExternalPackages: ["@node-rs/argon2", "@react-pdf/renderer"],
   experimental: { serverActions: { bodySizeLimit: "6mb" } },
   async headers() {
