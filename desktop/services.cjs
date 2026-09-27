@@ -23,6 +23,17 @@ function loadConfig(dataDir) {
       changed = true;
     }
   }
+  // Code d'installation (licence) : 8 caractères Crockford, propre à ce poste, affiché XXXX-XXXX
+  if (!cfg.installId) {
+    const A = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    const b = crypto.randomBytes(5);
+    let bits = 0n;
+    for (const x of b) bits = (bits << 8n) | BigInt(x);
+    let id = "";
+    for (let i = 7; i >= 0; i--) id += A[Number((bits >> BigInt(i * 5)) & 31n)];
+    cfg.installId = `${id.slice(0, 4)}-${id.slice(4)}`;
+    changed = true;
+  }
   if (changed) fs.writeFileSync(file, JSON.stringify(cfg, null, 2), { mode: 0o600 });
   return cfg;
 }
@@ -101,18 +112,23 @@ async function migrate({ resourcesDir, port, cfg, log }) {
   log("Migrations appliquées");
 }
 
-function waitForHttp(url, timeoutMs = 60_000) {
+// Premier démarrage : l'antivirus analyse les milliers de fichiers de l'application, d'où un délai généreux
+function waitForHttp(url, timeoutMs = 180_000, failed = () => null) {
   const start = Date.now();
+  let lastStatus = null;
   return new Promise((resolve, reject) => {
     const attempt = () => {
+      const err = failed();
+      if (err) return reject(err);
       http
         .get(url, (res) => {
           res.resume();
+          lastStatus = res.statusCode;
           res.statusCode < 500 ? resolve() : retry();
         })
         .on("error", retry);
     };
-    const retry = () => (Date.now() - start > timeoutMs ? reject(new Error("Le serveur de l'application ne répond pas")) : setTimeout(attempt, 300));
+    const retry = () => (Date.now() - start > timeoutMs ? reject(new Error(lastStatus ? `Le serveur de l'application répond en erreur (${lastStatus})` : "Le serveur de l'application ne répond pas")) : setTimeout(attempt, 300));
     attempt();
   });
 }
@@ -145,11 +161,34 @@ async function startServices({ resourcesDir, dataDir, pgBin, log = () => {} }) {
         APP_URL: url,
         UPLOAD_DIR: path.join(dataDir, "uploads"),
         ZE_EDITION: "desktop",
+        ZE_INSTALL_ID: cfg.installId,
       },
     });
-    server.stdout.on("data", (d) => logFile.write(d));
-    server.stderr.on("data", (d) => logFile.write(d));
-    await waitForHttp(`http://127.0.0.1:${port}/login`);
+    // Dernières lignes du serveur, reprises dans le message d'erreur
+    let tail = "";
+    const keep = (d) => {
+      logFile.write(d);
+      tail = (tail + d.toString()).slice(-8000);
+    };
+    server.stdout.on("data", keep);
+    server.stderr.on("data", keep);
+    let exited = null;
+    server.on("error", (e) => (exited = e));
+    // « close » : après la lecture complète de la sortie, pour citer la vraie erreur
+    server.on("close", (code, signal) => {
+      exited = new Error(`Le serveur de l'application s'est arrêté (code ${code ?? signal})`);
+      write(exited.message);
+    });
+    write(`Démarrage du serveur sur le port ${port}`);
+    try {
+      await waitForHttp(`http://127.0.0.1:${port}/login`, 180_000, () => exited);
+    } catch (e) {
+      server.kill();
+      write(`Échec : ${e.message}`);
+      const lines = tail.trim().split("\n");
+      const cause = lines.find((l) => /Error/.test(l)) ?? lines.slice(-3).join("\n");
+      throw new Error(cause ? `${e.message}\n${cause.trim()}` : e.message);
+    }
     write(`Application prête sur ${url}`);
     return {
       url,

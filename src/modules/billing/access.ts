@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { plans, subscriptions } from "@/db/schema";
+import { isDesktop, verifyLicense } from "@/lib/license";
 import { ALL_PERMISSIONS, type Permission } from "@/lib/permissions";
 
 export type SubscriptionState = {
@@ -50,6 +51,7 @@ export async function subscriptionState(companyId: string): Promise<Subscription
       trialEndsAt: subscriptions.trialEndsAt,
       currentPeriodEnd: subscriptions.currentPeriodEnd,
       unlimited: subscriptions.unlimited,
+      licenseCode: subscriptions.licenseCode,
       planName: plans.name,
     })
     .from(subscriptions)
@@ -57,7 +59,19 @@ export async function subscriptionState(companyId: string): Promise<Subscription
     .where(eq(subscriptions.companyId, companyId))
     .orderBy(desc(subscriptions.createdAt))
     .limit(1);
+  if (sub && isDesktop()) return computeState(desktopSubscription(sub));
   return computeState(sub);
+}
+
+/**
+ * Logiciel de bureau : l'accès dépend uniquement d'un code de licence valide pour ce poste
+ * (revérifié à chaque fois) ; sans licence, c'est l'essai gratuit.
+ */
+export function desktopSubscription(sub: { trialEndsAt: Date | null; planName: string; licenseCode: string | null }, installId = process.env.ZE_INSTALL_ID ?? "") {
+  const license = sub.licenseCode ? verifyLicense(sub.licenseCode, installId) : null;
+  if (!license) return { status: "trialing", trialEndsAt: sub.trialEndsAt, planName: sub.planName };
+  const planName = license.plan.charAt(0) + license.plan.slice(1).toLowerCase();
+  return { status: "active", trialEndsAt: null, planName, currentPeriodEnd: license.expiresAt, unlimited: license.expiresAt === null };
 }
 
 /**

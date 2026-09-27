@@ -43,6 +43,9 @@ services:
       DATABASE_URL: postgres://app_user:${DB_APP_PASSWORD}@db:5432/gestion
       APP_URL: https://${DOMAIN:?DOMAIN manquant}
       UPLOAD_DIR: /data/uploads
+      SUPPORT_CONTACT: ${SUPPORT_CONTACT:-}
+      # Clé privée qui signe les licences du logiciel Windows (menu Super admin > Licences)
+      LICENSE_PRIVATE_KEY: ${LICENSE_PRIVATE_KEY:-}
     volumes: [uploads:/data/uploads]
     depends_on:
       migrate: { condition: service_completed_successfully }

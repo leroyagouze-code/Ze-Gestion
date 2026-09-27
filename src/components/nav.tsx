@@ -9,6 +9,7 @@ import {
   Boxes,
   FileText,
   History,
+  KeyRound,
   LayoutDashboard,
   Menu,
   Package,
@@ -39,6 +40,7 @@ const ICONS = {
   settings: Settings,
   audit: History,
   admin: Shield,
+  licence: KeyRound,
 };
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };

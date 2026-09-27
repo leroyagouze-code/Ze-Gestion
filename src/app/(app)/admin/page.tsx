@@ -22,7 +22,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   };
   return (
     <>
-      <PageHeader title="Abonnements" subtitle="Suivi de toutes les entreprises clientes. Les données commerciales ne sont pas accessibles ici ; chaque action est journalisée." />
+      <PageHeader title="Abonnements" subtitle="Suivi de toutes les entreprises clientes. Les données commerciales ne sont pas accessibles ici ; chaque action est journalisée." actions={<Link href="/admin/licences" className="btn-secondary">Licences du logiciel</Link>} />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
         <Stat label="Entreprises" value={o.counts.all} hint={`${o.signups30} inscrites sur 30 j`} />
         <Stat label="En essai" value={o.counts.trial} />

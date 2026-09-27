@@ -95,11 +95,25 @@ export const subscriptions = pgTable("subscriptions", {
   /** Accès complet offert par la plateforme : ni date de fin, ni limite de formule. */
   unlimited: boolean("unlimited").notNull().default(false),
   notes: text("notes"),
+  /** Logiciel de bureau : code de licence signé saisi sur ce poste (revérifié à chaque chargement). */
+  licenseCode: text("license_code"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
 
 /** Paiements d'abonnement reçus par la plateforme (TMoney, Flooz, espèces…), saisis par le super admin. */
+/** Codes de licence du logiciel de bureau générés par le super admin (registre). */
+export const licenseIssues = pgTable("license_issues", {
+  id: id(),
+  installId: text("install_id").notNull(),
+  plan: text("plan").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  customer: text("customer"),
+  code: text("code").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});
+
 export const subscriptionPayments = pgTable(
   "subscription_payments",
   {

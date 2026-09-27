@@ -25,12 +25,37 @@
     "appId": "com.zegroup.gestion",
     "productName": "ZE Gestion",
     "copyright": "ZE GROUP",
-    "directories": { "output": "dist" },
-    "files": ["main.cjs", "services.cjs", "splash.html", "icon.png", "package.json", "node_modules/**"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "services.cjs",
+      "splash.html",
+      "icon.png",
+      "package.json",
+      "node_modules/**"
+    ],
     "extraResources": [
-      { "from": "app/server", "to": "server", "filter": ["**/*"] },
-      { "from": "app/drizzle", "to": "drizzle" },
-      { "from": "app/pgsql", "to": "pgsql", "filter": ["**/*"] }
+      {
+        "from": "app",
+        "to": ".",
+        "filter": [
+          "server/**/*",
+          "server/node_modules/**/*"
+        ]
+      },
+      {
+        "from": "app/drizzle",
+        "to": "drizzle"
+      },
+      {
+        "from": "app/pgsql",
+        "to": "pgsql",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "target": "nsis",
@@ -46,11 +71,16 @@
       "shortcutName": "ZE Gestion",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "installerLanguages": ["fr_FR"],
+      "installerLanguages": [
+        "fr_FR"
+      ],
       "language": "1036",
       "deleteAppDataOnUninstall": false,
       "artifactName": "ZE-Gestion-Installation-${version}.exe"
     },
-    "linux": { "target": "dir", "icon": "icon.png" }
+    "linux": {
+      "target": "dir",
+      "icon": "icon.png"
+    }
   }
 }
