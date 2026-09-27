@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTrade } from "@/lib/trades";
 import { RevenueChart, TopProductsChart } from "@/components/charts";
 import { parsePeriod, PeriodFilter } from "@/components/period-filter";
 import { Badge, Card, PageHeader, Stat } from "@/components/ui";
@@ -16,6 +17,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const period = parsePeriod(sp);
   const s = await dashboardStats(ctx, periodRange(period, sp));
   const m = (v: number) => formatMoney(v, ctx.company.currency);
+  const trade = getTrade(ctx.company.businessType);
+  const many = trade.item.many;
 
   return (
     <>
@@ -39,7 +42,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <Stat label="CA de la période" value={m(s.period.revenue)} hint={`${s.period.count} vente(s)`} />
         {s.period.profit !== null && <Stat label="Bénéfice estimé" value={m(s.period.profit)} tone={s.period.profit >= 0 ? "good" : "bad"} hint="Marge − dépenses" />}
         <Stat label="Dépenses" value={m(s.period.expenses)} />
-        <Stat label="Produits" value={s.productCount} hint={s.stockValue !== null ? `Stock : ${m(s.stockValue)}` : undefined} />
+        <Stat label={many} value={s.productCount} hint={s.stockValue !== null ? `Stock : ${m(s.stockValue)}` : undefined} />
         <Stat label="Clients" value={s.customerCount} />
         <Stat label="Dettes clients" value={m(s.customerDebt)} tone={s.customerDebt > 0 ? "warn" : "default"} />
         <Stat label="Dettes fournisseurs" value={m(s.supplierDebt)} tone={s.supplierDebt > 0 ? "warn" : "default"} />
@@ -51,7 +54,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <Card title="Évolution des ventes" className="lg:col-span-2">
           <RevenueChart data={s.trend} currency={ctx.company.currency} />
         </Card>
-        <Card title="Produits les plus vendus">
+        <Card title={`${many} les plus vendus`}>
           <TopProductsChart data={s.top} />
         </Card>
       </div>
@@ -73,9 +76,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </ul>
           )}
         </Card>
-        <Card title="Produits expirés ou bientôt expirés">
+        {(trade.perishable || s.expiring.length > 0) && (
+        <Card title={`${many} expirés ou bientôt expirés`}>
           {s.expiring.length === 0 ? (
-            <p className="text-sm text-slate-500">Aucun produit concerné dans les 30 prochains jours.</p>
+            <p className="text-sm text-slate-500">Rien ne périme dans les 30 prochains jours.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {s.expiring.map((p) => {
@@ -90,6 +94,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </ul>
           )}
         </Card>
+        )}
       </div>
     </>
   );

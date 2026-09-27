@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTrade } from "@/lib/trades";
 import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Badge, Card, Field, PageHeader } from "@/components/ui";
@@ -12,6 +13,7 @@ import { cancelSaleAction, invoiceFromSaleAction } from "../actions";
 
 export default async function SalePage({ params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireContext("sales.view");
+  const item = getTrade(ctx.company.businessType).item;
   const { id } = await params;
   const d = await getSale(ctx, id).catch((e) => {
     if (e instanceof NotFoundError) notFound();
@@ -48,7 +50,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
             <table className="table">
               <thead>
                 <tr>
-                  <th>Produit</th>
+                  <th>{item.one.charAt(0).toUpperCase() + item.one.slice(1)}</th>
                   <th className="text-right">Qté</th>
                   <th className="text-right">P.U. {priceBasis(s.taxMode)}</th>
                   <th className="text-right">Remise</th>

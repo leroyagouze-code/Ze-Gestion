@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTrade } from "@/lib/trades";
 import { notFound } from "next/navigation";
 import { Card, PageHeader, Stat } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
@@ -12,6 +13,7 @@ import { SupplierForm } from "../supplier-form";
 
 export default async function SupplierPage({ params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireContext("suppliers.view");
+  const many = getTrade(ctx.company.businessType).item.many;
   const { id } = await params;
   const data = await getSupplier(ctx, id).catch((e) => {
     if (e instanceof NotFoundError) notFound();
@@ -25,13 +27,13 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
       <PageHeader title={s.name} subtitle={[s.companyName, s.phone, s.email].filter(Boolean).join(" · ") || undefined} />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Stat label="Montant dû" value={m(s.balanceDue)} tone={s.balanceDue > 0 ? "warn" : "default"} />
-        <Stat label="Produits fournis" value={data.products.length} />
+        <Stat label={`${many} fournis`} value={data.products.length} />
         <Stat label="Réceptions récentes" value={data.receipts.length} />
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
-          <Card title="Produits fournis">
-            {data.products.length === 0 ? <p className="text-sm text-slate-500">Aucun produit rattaché.</p> : (
+          <Card title={`${many} fournis`}>
+            {data.products.length === 0 ? <p className="text-sm text-slate-500">Rien de rattaché pour l&apos;instant.</p> : (
               <div className="overflow-x-auto">
                 <table className="table">
                   <tbody>

@@ -1,4 +1,5 @@
 import { parsePeriod, PeriodFilter } from "@/components/period-filter";
+import { getTrade } from "@/lib/trades";
 import { Card, PageHeader, Stat, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { can } from "@/lib/permissions";
@@ -12,6 +13,7 @@ export const metadata = { title: "Rapports" };
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ period?: string; from?: string; to?: string }> }) {
   const ctx = await requireContext("reports.view");
+  const item = getTrade(ctx.company.businessType).item;
   const sp = await searchParams;
   const period = parsePeriod(sp);
   const r = await salesReport(ctx, periodRange(period, sp));
@@ -58,10 +60,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             </table>
           </TableWrap>
         </Card>
-        <Card title="Par produit">
+        <Card title={`Par ${item.one}`}>
           <TableWrap>
             <table className="table">
-              <thead><tr><th>Produit</th><th className="text-right">Qté</th><th className="text-right">CA</th>{r.showProfit && <th className="text-right">Coût</th>}</tr></thead>
+              <thead><tr><th>{item.one.charAt(0).toUpperCase() + item.one.slice(1)}</th><th className="text-right">Qté</th><th className="text-right">CA</th>{r.showProfit && <th className="text-right">Coût</th>}</tr></thead>
               <tbody>
                 {r.byProduct.map((p) => (
                   <tr key={p.name}><td>{p.name}</td><td className="text-right">{formatQty(p.quantity)}</td><td className="text-right">{m(p.revenue)}</td>{r.showProfit && <td className="text-right">{m(p.cost)}</td>}</tr>

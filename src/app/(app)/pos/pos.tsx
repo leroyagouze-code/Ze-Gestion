@@ -31,6 +31,7 @@ export function Pos({
   currency,
   decimals,
   taxMode = "line",
+  itemWord = "produit",
   paymentMethods,
   customers,
   canDiscount,
@@ -39,6 +40,8 @@ export function Pos({
   currency: string;
   decimals: number;
   taxMode?: TaxMode;
+  /** « produit », « article », « pièce »… selon le métier */
+  itemWord?: string;
   paymentMethods: Method[];
   customers: { id: string; name: string; phone: string | null }[];
   canDiscount: boolean;
@@ -87,7 +90,7 @@ export function Pos({
     if (exact || found.length === 1) {
       add(exact ?? found[0]);
       setQ("");
-    } else if (!found.length) setError(`Aucun produit pour « ${term} »`);
+    } else if (!found.length) setError(`Aucun ${itemWord} pour « ${term} »`);
   }
 
   const totals = useMemo(
@@ -164,7 +167,7 @@ export function Pos({
         </div>
       </div>
       <div className="flex-1 divide-y divide-slate-100 overflow-y-auto">
-        {cart.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Scannez ou touchez un produit pour l&apos;ajouter.</p>}
+        {cart.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Scannez ou touchez un {itemWord} pour l&apos;ajouter.</p>}
         {cart.map((l, i) => (
           <div key={l.product.id} className="px-4 py-3">
             <div className="flex items-start justify-between gap-2">
@@ -294,7 +297,7 @@ export function Pos({
                   onEnter();
                 }
               }}
-              placeholder="Scanner un code-barres ou rechercher un produit…"
+              placeholder={`Scanner un code-barres ou rechercher un ${itemWord}…`}
               className="input h-11 pl-10 text-base"
             />
           </div>
@@ -308,7 +311,7 @@ export function Pos({
               <span className={clsx("text-xs", p.stock <= 0 ? "text-red-600" : "text-slate-500")}>Stock : {formatQty(p.stock)} {p.unit}</span>
             </button>
           ))}
-          {results.length === 0 && <p className="col-span-full p-6 text-center text-sm text-slate-500">Aucun produit trouvé.</p>}
+          {results.length === 0 && <p className="col-span-full p-6 text-center text-sm text-slate-500">Aucun {itemWord} trouvé.</p>}
         </div>
         <button className="btn-primary m-3 py-3 lg:hidden" onClick={() => setShowCart(true)}>
           Panier ({cart.length}) · {m(totals.total)}

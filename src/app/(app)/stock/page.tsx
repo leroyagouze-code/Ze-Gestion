@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTrade } from "@/lib/trades";
 import clsx from "clsx";
 import { Badge, EmptyState, PageHeader, Pagination, SearchBar, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
@@ -16,6 +17,7 @@ const FILTERS = [
 
 export default async function StockPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string; filter?: "all" | "low" | "out" }> }) {
   const ctx = await requireContext("stock.view");
+  const item = getTrade(ctx.company.businessType).item;
   const sp = await searchParams;
   const filter = sp.filter ?? "all";
   const data = await listStock(ctx, { q: sp.q, filter, page: Number(sp.page) });
@@ -39,18 +41,18 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           </Link>
         ))}
       </div>
-      <SearchBar q={sp.q} placeholder="Produit, SKU, code-barres">
+      <SearchBar q={sp.q} placeholder={`${item.one.charAt(0).toUpperCase() + item.one.slice(1)}, SKU, code-barres`}>
         <input type="hidden" name="filter" value={filter} />
       </SearchBar>
       <div className="card">
         {data.rows.length === 0 ? (
-          <EmptyState title="Aucun produit" />
+          <EmptyState title={`Aucun ${item.one}`} />
         ) : (
           <TableWrap>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Produit</th>
+                  <th>{item.one.charAt(0).toUpperCase() + item.one.slice(1)}</th>
                   <th className="text-right">Quantité</th>
                   <th className="text-right">Minimum</th>
                   {canCost && <th className="hidden text-right sm:table-cell">Valeur</th>}
