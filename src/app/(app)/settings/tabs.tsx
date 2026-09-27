@@ -1,10 +1,11 @@
 import Link from "next/link";
 import clsx from "clsx";
 
-export function SettingsTabs({ current }: { current: "company" | "billing" }) {
+export function SettingsTabs({ current }: { current: "company" | "billing" | "modules" }) {
   const tabs = [
     { key: "company", href: "/settings/company", label: "Entreprise et documents" },
     { key: "billing", href: "/settings/billing", label: "Taxes, paiements et numérotation" },
+    { key: "modules", href: "/settings/modules", label: "Modules affichés" },
   ];
   return (
     <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">

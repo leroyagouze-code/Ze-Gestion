@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// Messages de validation en français partout (« nombre attendu »…)
+z.config(z.locales.fr());
+
 /** Champs texte optionnels venant de formulaires : "" → null */
 export const optText = (max = 500) =>
   z
@@ -33,6 +36,48 @@ export function formToObject(fd: FormData) {
   return o;
 }
 
+/** Noms des champs tels que l'utilisateur les voit, pour des erreurs lisibles. */
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nom",
+  companyName: "Nom de l'entreprise",
+  ownerName: "Responsable",
+  fullName: "Nom",
+  email: "Email",
+  password: "Mot de passe",
+  phone: "Téléphone",
+  salePrice: "Prix de vente",
+  purchasePrice: "Prix d'achat",
+  promoPrice: "Prix promo",
+  minStock: "Stock minimum",
+  initialStock: "Stock initial",
+  quantity: "Quantité",
+  unitPrice: "Prix unitaire",
+  unitCost: "Coût unitaire",
+  discount: "Remise",
+  amount: "Montant",
+  taxRate: "TVA",
+  rate: "Taux",
+  description: "Désignation",
+  items: "Lignes",
+  balanceDue: "Solde dû",
+  creditLimit: "Plafond de crédit",
+  spentOn: "Date",
+  dueDate: "Échéance",
+  months: "Nombre de mois",
+  brandColor: "Couleur",
+  country: "Pays",
+  currency: "Devise",
+  timezone: "Fuseau horaire",
+};
+
 export function zodMessage(e: z.ZodError) {
-  return e.issues.map((i) => (i.path.length ? `${i.path.join(".")} : ${i.message}` : i.message)).join(" · ");
+  return e.issues
+    .map((i) => {
+      const key = [...i.path].reverse().find((p) => typeof p === "string") as string | undefined;
+      const line = i.path.find((p) => typeof p === "number") as number | undefined;
+      const label = key ? (FIELD_LABELS[key] ?? null) : null;
+      const where = label ? (line !== undefined ? `${label} (ligne ${line + 1})` : label) : null;
+      return where ? `${where} : ${i.message}` : i.message;
+    })
+    .join(" · ");
 }

@@ -6,8 +6,8 @@ import { getSession } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { NotFoundError } from "@/lib/errors";
 import { formatMoney } from "@/lib/money";
-import { getCompanyAdmin, PAYMENT_METHODS } from "@/modules/admin/service";
-import { extendTrialAction, recordPaymentAction, setPlanAction, setStatusAction, setUnlimitedAction } from "../../actions";
+import { FREE_DURATIONS, getCompanyAdmin, PAYMENT_METHODS } from "@/modules/admin/service";
+import { grantFreeAccessAction, extendTrialAction, recordPaymentAction, setPlanAction, setStatusAction, setUnlimitedAction } from "../../actions";
 import { SubscriptionBadge } from "../../subscription-badge";
 
 export const metadata = { title: "Abonnement" };
@@ -81,7 +81,7 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
           </ActionForm>
         </Card>
 
-        <Card title="Accès illimité offert" className="lg:col-span-2">
+        <Card title="Activer gratuitement" className="lg:col-span-2">
           {sub?.unlimited ? (
             <ActionForm action={setUnlimitedAction.bind(null, c.id, false)}>
               <p className="mb-3 text-sm text-slate-600">
@@ -90,10 +90,18 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
               <SubmitButton className="btn-secondary text-red-600">Retirer l&apos;accès illimité</SubmitButton>
             </ActionForm>
           ) : (
-            <ActionForm action={setUnlimitedAction.bind(null, c.id, true)} className="space-y-3">
-              <p className="text-sm text-slate-600">Pour un partenaire, un compte de démonstration ou interne : accès complet, sans échéance ni limite d&apos;utilisateurs.</p>
-              <Field label="Motif (facultatif)" name="note" placeholder="Ex. partenaire ZE GROUP" />
-              <SubmitButton>Offrir l&apos;accès illimité</SubmitButton>
+            <ActionForm action={grantFreeAccessAction.bind(null, c.id)} className="grid gap-3 sm:grid-cols-2">
+              <p className="text-sm text-slate-600 sm:col-span-2">Accès complet sans paiement : promotion, partenaire, compte de démonstration. La durée s&apos;ajoute à une période en cours.</p>
+              <SelectField label="Durée" name="duration" defaultValue="1" options={Object.entries(FREE_DURATIONS).map(([value, label]) => ({ value, label }))} />
+              <SelectField
+                label="Formule"
+                name="planId"
+                // compte offert : la formule la plus complète par défaut, sauf si l'entreprise en a déjà une payante
+                defaultValue={plan && plan.monthlyPrice > 0 ? plan.id : [...d.plans].sort((a, b) => b.monthlyPrice - a.monthlyPrice)[0]?.id}
+                options={d.plans.map((p) => ({ value: p.id, label: p.name }))}
+              />
+              <Field label="Motif (facultatif)" name="note" placeholder="Ex. partenaire ZE GROUP" className="sm:col-span-2" />
+              <div className="sm:col-span-2"><SubmitButton>Activer gratuitement</SubmitButton></div>
             </ActionForm>
           )}
         </Card>

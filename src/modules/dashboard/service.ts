@@ -1,8 +1,9 @@
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
-import { localDate } from "@/lib/dates";
-import { customers, expenses, products, saleItems, sales, stockLevels, suppliers } from "@/db/schema";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { localDate, requestTimeZone, zonedDay, zonedMidnight } from "@/lib/dates";
+import { customers, expenses, products, stockLevels, suppliers } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
+import { documentsInRange, linesInRange } from "@/modules/reports/service";
 import { stockAlerts } from "@/modules/stock/service";
 
 export type PeriodKey = "today" | "yesterday" | "week" | "month" | "last_month" | "year" | "custom";
@@ -17,19 +18,17 @@ export const PERIOD_LABELS: Record<PeriodKey, string> = {
   custom: "Période personnalisée",
 };
 
-/** Bornes [from, to[ en heure locale du serveur. */
-export function periodRange(key: PeriodKey, custom?: { from?: string; to?: string }, now = new Date()) {
-  const d = (y: number, m: number, day: number) => new Date(y, m, day);
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const day = now.getDate();
+/** Bornes [from, to[ en heure locale de l'entreprise (fuseau tz). */
+export function periodRange(key: PeriodKey, custom?: { from?: string; to?: string }, now = new Date(), tz: string | undefined = requestTimeZone()) {
+  const d = (y: number, m: number, day: number) => zonedMidnight(y, m, day, tz);
+  const { y, m, d: day, dow } = zonedDay(now, tz);
+  const ymd = (s: string) => s.split("-").map(Number) as [number, number, number];
   switch (key) {
     case "today":
       return { from: d(y, m, day), to: d(y, m, day + 1) };
     case "yesterday":
       return { from: d(y, m, day - 1), to: d(y, m, day) };
     case "week": {
-      const dow = (now.getDay() + 6) % 7; // lundi = 0
       return { from: d(y, m, day - dow), to: d(y, m, day + 1) };
     }
     case "month":
@@ -39,8 +38,9 @@ export function periodRange(key: PeriodKey, custom?: { from?: string; to?: strin
     case "year":
       return { from: d(y, 0, 1), to: d(y + 1, 0, 1) };
     case "custom": {
-      const from = custom?.from ? new Date(custom.from + "T00:00:00") : d(y, m, 1);
-      const to = custom?.to ? new Date(new Date(custom.to + "T00:00:00").getTime() + 86400_000) : d(y, m, day + 1);
+      const valid = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+      const from = valid(custom?.from) ? (([a, b, c]) => d(a, b - 1, c))(ymd(custom!.from!)) : d(y, m, 1);
+      const to = valid(custom?.to) ? (([a, b, c]) => d(a, b - 1, c + 1))(ymd(custom!.to!)) : d(y, m, day + 1);
       return { from, to };
     }
   }
@@ -49,35 +49,28 @@ export function periodRange(key: PeriodKey, custom?: { from?: string; to?: strin
 export async function dashboardStats(ctx: AppContext, range: { from: Date; to: Date }) {
   ctxAssert(ctx, "dashboard.view");
   const showProfit = ctxCan(ctx, "reports.profit");
-  const now = new Date();
-  const startDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startWeek = new Date(startDay.getTime() - ((now.getDay() + 6) % 7) * 86400_000);
-  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const done = eq(sales.status, "completed");
+  const tz = ctx.company.timezone;
+  const startDay = periodRange("today", undefined, new Date(), tz).from;
+  const startWeek = periodRange("week", undefined, new Date(), tz).from;
+  const startMonth = periodRange("month", undefined, new Date(), tz).from;
 
   return withTenant(ctx, async (tx) => {
-    const revenueSince = (from: Date) =>
-      tx
-        .select({ total: sql<number>`coalesce(sum(${sales.total}), 0)::float8` })
-        .from(sales)
-        .where(and(done, gte(sales.createdAt, from)))
-        .then((r) => r[0].total);
+    // Ventes de caisse et factures saisies à la main (voir documentsInRange)
+    const far = new Date(Date.now() + 86400_000);
+    const revenueSince = async (from: Date) =>
+      ((await tx.execute(sql`select coalesce(sum(d.total), 0)::float8 as total from ${documentsInRange({ from, to: far })} d`)).rows[0] as { total: number }).total;
 
-    const inRange = and(done, gte(sales.createdAt, range.from), lt(sales.createdAt, range.to));
-    const [period] = await tx
-      .select({
-        revenue: sql<number>`coalesce(sum(${sales.total}), 0)::float8`,
-        count: sql<number>`count(*)::int`,
-        cost: sql<number>`coalesce(sum(${sales.costTotal}), 0)::float8`,
-        tax: sql<number>`coalesce(sum(${sales.taxTotal}), 0)::float8`,
-      })
-      .from(sales)
-      .where(inRange);
+    const period = (
+      await tx.execute(sql`
+        select coalesce(sum(d.total), 0)::float8 as revenue, count(*)::int as count,
+               coalesce(sum(d.cost), 0)::float8 as cost, coalesce(sum(d.tax), 0)::float8 as tax
+          from ${documentsInRange(range)} d`)
+    ).rows[0] as { revenue: number; count: number; cost: number; tax: number };
 
     const [exp] = await tx
       .select({ total: sql<number>`coalesce(sum(${expenses.amount}), 0)::float8` })
       .from(expenses)
-      .where(and(gte(expenses.spentOn, localDate(range.from)), lt(expenses.spentOn, localDate(range.to))));
+      .where(and(gte(expenses.spentOn, localDate(range.from, tz)), lt(expenses.spentOn, localDate(range.to, tz))));
 
     const [stock] = await tx
       .select({
@@ -94,29 +87,19 @@ export async function dashboardStats(ctx: AppContext, range: { from: Date; to: D
 
     const days = Math.ceil((range.to.getTime() - range.from.getTime()) / 86400_000);
     const bucket = days > 62 ? "month" : "day";
-    const trend = await tx
-      .select({
-        date: sql<string>`to_char(date_trunc(${bucket}, ${sales.createdAt}), 'YYYY-MM-DD')`,
-        revenue: sql<number>`sum(${sales.total})::float8`,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(sales)
-      .where(inRange)
-      .groupBy(sql`1`)
-      .orderBy(sql`1`);
+    const trend = (
+      await tx.execute(sql`
+        select to_char(date_trunc(${bucket}, d.at), 'YYYY-MM-DD') as date, sum(d.total)::float8 as revenue, count(*)::int as count
+          from ${documentsInRange(range)} d
+         group by 1 order by 1`)
+    ).rows as { date: string; revenue: number; count: number }[];
 
-    const top = await tx
-      .select({
-        name: saleItems.name,
-        quantity: sql<number>`sum(${saleItems.quantity})::float8`,
-        revenue: sql<number>`sum(${saleItems.lineTotal})::float8`,
-      })
-      .from(saleItems)
-      .innerJoin(sales, eq(sales.id, saleItems.saleId))
-      .where(inRange)
-      .groupBy(saleItems.name)
-      .orderBy(desc(sql`sum(${saleItems.lineTotal})`))
-      .limit(5);
+    const top = (
+      await tx.execute(sql`
+        select l.name, sum(l.quantity)::float8 as quantity, sum(l.line_total)::float8 as revenue
+          from ${linesInRange(range)} l
+         group by l.name order by sum(l.line_total) desc limit 5`)
+    ).rows as { name: string; quantity: number; revenue: number }[];
 
     const alerts = await stockAlerts(ctx, 8);
     const outOfStock = alerts.low.filter((p) => p.quantity <= 0);
@@ -138,6 +121,7 @@ export async function dashboardStats(ctx: AppContext, range: { from: Date; to: D
       top,
       outOfStock,
       lowStock,
+      stockCounts: alerts.counts,
       expiring: alerts.expiring,
     };
   });

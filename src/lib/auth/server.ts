@@ -1,4 +1,5 @@
 import "server-only";
+import { setRequestTimeZone } from "@/lib/dates";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -52,6 +53,7 @@ export async function requireContext(permission?: Permission): Promise<AppContex
   if ((await getSession())?.mustChangePassword) redirect("/account/password");
   const ctx = await getContext();
   if (!ctx) redirect("/login");
+  setRequestTimeZone(ctx.company.timezone);
   if (permission && !can(ctx.permissions, permission)) redirect("/forbidden");
   return ctx;
 }

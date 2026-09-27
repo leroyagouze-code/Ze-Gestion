@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { num } from "@/lib/zod";
 import { z } from "zod";
 import { db, type Tx } from "@/db";
 import { auditLogs, companies, plans, subscriptionPayments, subscriptions, users } from "@/db/schema";
@@ -163,7 +164,7 @@ export const PAYMENT_METHODS = { tmoney: "TMoney", flooz: "Flooz", cash: "Espèc
 export const paymentSchema = z.object({
   planId: z.string().uuid(),
   months: z.coerce.number().int().min(1).max(36),
-  amount: z.coerce.number().min(0).max(100_000_000),
+  amount: num().pipe(z.number().max(100_000_000)),
   method: z.enum(Object.keys(PAYMENT_METHODS) as [keyof typeof PAYMENT_METHODS, ...(keyof typeof PAYMENT_METHODS)[]]),
   reference: z.string().trim().max(100).optional().transform((v) => v || null),
 });
@@ -224,6 +225,44 @@ export async function setUnlimited(admin: Admin, companyId: string, unlimited: b
       : { unlimited: false, status: "active" as const, currentPeriodEnd: sub.currentPeriodEnd && sub.currentPeriodEnd > now ? sub.currentPeriodEnd : now };
     await tx.update(subscriptions).set({ ...patch, updatedAt: now }).where(eq(subscriptions.id, sub.id));
     await logAction(tx, admin, companyId, unlimited ? "platform.unlimited_granted" : "platform.unlimited_removed", note ? { note } : undefined);
+  });
+}
+
+export const FREE_DURATIONS = { "1": "1 mois", "3": "3 mois", "6": "6 mois", "12": "1 an", unlimited: "Sans limite" } as const;
+
+export const freeAccessSchema = z.object({
+  duration: z.enum(Object.keys(FREE_DURATIONS) as [keyof typeof FREE_DURATIONS, ...(keyof typeof FREE_DURATIONS)[]]),
+  planId: z.string().uuid().optional().or(z.literal("").transform(() => undefined)),
+  note: z.string().trim().max(300).optional().transform((v) => v || null),
+});
+
+/**
+ * Activation gratuite par le super admin : accès complet pendant la durée choisie (ajoutée à une
+ * période en cours), ou sans limite. Aucun paiement n'est enregistré ; l'action est journalisée.
+ */
+export async function grantFreeAccess(admin: Admin, companyId: string, raw: unknown) {
+  assertSuperAdmin(admin);
+  const input = freeAccessSchema.parse(raw);
+  if (input.duration === "unlimited") {
+    await setUnlimited(admin, companyId, true, input.note ?? "Accès gratuit");
+    if (input.planId) await setCompanyPlan(admin, companyId, input.planId);
+    return null;
+  }
+  return db.transaction(async (tx) => {
+    const sub = await lockSubscription(tx, companyId);
+    if (input.planId) {
+      const [plan] = await tx.select({ id: plans.id }).from(plans).where(eq(plans.id, input.planId));
+      if (!plan) throw new NotFoundError("Formule");
+    }
+    const now = new Date();
+    const running = sub.status === "active" && !sub.unlimited && sub.currentPeriodEnd && sub.currentPeriodEnd > now;
+    const periodEnd = addMonths(running ? sub.currentPeriodEnd! : now, Number(input.duration));
+    await tx
+      .update(subscriptions)
+      .set({ status: "active", unlimited: false, currentPeriodEnd: periodEnd, ...(input.planId ? { planId: input.planId } : {}), notes: input.note ?? sub.notes, updatedAt: now })
+      .where(eq(subscriptions.id, sub.id));
+    await logAction(tx, admin, companyId, "platform.free_access", { months: Number(input.duration), periodEnd, note: input.note });
+    return periodEnd;
   });
 }
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
 import { Camera, Minus, Plus, ScanLine, Trash2, X } from "lucide-react";
-import { computeTotals, formatMoney, formatQty } from "@/lib/money";
+import { computeTotals, formatMoney, formatQty, type TaxMode } from "@/lib/money";
 import { createSaleAction } from "./actions";
 
 type Product = {
@@ -19,13 +19,15 @@ type Product = {
 };
 type Line = { product: Product; quantity: number; discount: number };
 type Method = { id: string; label: string; type: string };
-type Pay = { paymentMethodId: string; amount: string; reference: string };
+/** auto : montant rempli par la caisse, qui suit le total tant que le caissier ne le modifie pas. */
+type Pay = { paymentMethodId: string; amount: string; reference: string; auto?: boolean };
 
 const price = (p: Product) => (p.promoPrice != null && p.promoPrice > 0 ? p.promoPrice : p.salePrice);
 
 export function Pos({
   currency,
   decimals,
+  taxMode = "line",
   paymentMethods,
   customers,
   canDiscount,
@@ -33,6 +35,7 @@ export function Pos({
 }: {
   currency: string;
   decimals: number;
+  taxMode?: TaxMode;
   paymentMethods: Method[];
   customers: { id: string; name: string; phone: string | null }[];
   canDiscount: boolean;
@@ -90,8 +93,9 @@ export function Pos({
         cart.map((l) => ({ quantity: l.quantity, unitPrice: price(l.product), discount: l.discount, taxRate: l.product.taxRate })),
         Number(discount.replace(",", ".")) || 0,
         decimals,
+        taxMode,
       ),
-    [cart, discount, decimals],
+    [cart, discount, decimals, taxMode],
   );
 
   const tendered = pays.reduce((s, p) => s + (Number(p.amount.replace(/\s/g, "").replace(",", ".")) || 0), 0);
@@ -104,10 +108,15 @@ export function Pos({
 
   function pickMethod(id: string) {
     setPays((ps) => {
-      if (ps.length <= 1) return [{ paymentMethodId: id, amount: String(totals.total), reference: "" }];
+      if (ps.length <= 1) return [{ paymentMethodId: id, amount: String(totals.total), reference: "", auto: true }];
       return ps;
     });
   }
+
+  // Le panier change après le choix du moyen de paiement : le montant rempli automatiquement suit
+  useEffect(() => {
+    setPays((ps) => (ps.length === 1 && ps[0].auto && ps[0].amount !== String(totals.total) ? [{ ...ps[0], amount: String(totals.total) }] : ps));
+  }, [totals.total]);
 
   function reset() {
     setCart([]);
@@ -160,10 +169,10 @@ export function Pos({
                 <div className="truncate text-sm font-medium">{l.product.name}</div>
                 <div className="text-xs text-slate-500">{m(price(l.product))} / {l.product.unit}</div>
               </div>
-              <div className="text-right text-sm font-semibold">{m(totals.lines[i]?.lineTotal ?? 0)}</div>
+              <div className="text-right text-sm font-semibold">{m((taxMode === "total" ? totals.lines[i]?.net : totals.lines[i]?.lineTotal) ?? 0)}</div>
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => c.map((x, j) => (j === i ? { ...x, quantity: Math.max(x.quantity - 1, 0.001) } : x)))}><Minus size={16} /></button>
+              <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => (l.quantity <= 1 ? c.filter((_, j) => j !== i) : c.map((x, j) => (j === i ? { ...x, quantity: x.quantity - 1 } : x))))}><Minus size={16} /></button>
               <input
                 className="input h-9 w-20 text-center"
                 inputMode="decimal"
@@ -219,7 +228,7 @@ export function Pos({
             <select className="input" value={p.paymentMethodId} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, paymentMethodId: e.target.value } : x)))}>
               {paymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.label}</option>)}
             </select>
-            <input className="input w-32" inputMode="decimal" value={p.amount} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} aria-label="Montant reçu" />
+            <input className="input w-32" inputMode="decimal" value={p.amount} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value, auto: false } : x)))} aria-label="Montant reçu" />
             <input className="input hidden w-32 sm:block" placeholder="Réf." value={p.reference} onChange={(e) => setPays((ps) => ps.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
             {pays.length > 1 && <button className="btn-ghost px-2" onClick={() => setPays((ps) => ps.filter((_, j) => j !== i))} aria-label="Retirer"><X size={16} /></button>}
           </div>

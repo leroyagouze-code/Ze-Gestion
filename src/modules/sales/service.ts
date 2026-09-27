@@ -15,7 +15,7 @@ import {
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
-import { computeTotals, currencyDecimals, lineDiscount, round } from "@/lib/money";
+import { computeTotals, currencyDecimals, isTaxMode, lineDiscount, round } from "@/lib/money";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
 import { nextDocumentNumber } from "@/modules/settings/sequences";
@@ -75,7 +75,8 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       const unitPrice = p.promoPrice != null && p.promoPrice > 0 ? p.promoPrice : p.salePrice;
       return { p, quantity: i.quantity, unitPrice, discount: i.discount, taxRate: p.taxRate };
     });
-    const totals = computeTotals(lines, input.discount, decimals);
+    const taxMode = isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line";
+    const totals = computeTotals(lines, input.discount, decimals, taxMode);
     if (totals.total < 0) throw new BusinessError("Total négatif");
 
     // Paiements : on n'enregistre pas la monnaie rendue ; le reste dû devient une créance client.
@@ -112,6 +113,7 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         discountTotal: totals.discountTotal,
         taxTotal: totals.taxTotal,
         total: totals.total,
+        taxMode,
         costTotal,
         paidAmount: paid,
         dueAmount: due,

@@ -42,49 +42,55 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <div className="space-y-4 xl:col-span-2">
           <Card title="Achats">
             {data.sales.length === 0 ? <p className="text-sm text-slate-500">Aucun achat.</p> : (
-              <table className="table">
-                <tbody>
-                  {data.sales.map((s) => (
-                    <tr key={s.id}>
-                      <td><Link href={`/sales/${s.id}`} className="font-medium hover:text-brand-700">{s.number}</Link></td>
-                      <td>{formatDate(s.createdAt, true)}</td>
-                      <td className="text-right">{m(s.total)}</td>
-                      <td className="text-right">{s.status === "cancelled" ? <Badge tone="gray">Annulée</Badge> : s.dueAmount > 0 ? <Badge tone="amber">Reste {m(s.dueAmount)}</Badge> : <Badge tone="green">Payée</Badge>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <tbody>
+                    {data.sales.map((s) => (
+                      <tr key={s.id}>
+                        <td><Link href={`/sales/${s.id}`} className="font-medium hover:text-brand-700">{s.number}</Link></td>
+                        <td>{formatDate(s.createdAt, true)}</td>
+                        <td className="text-right">{m(s.total)}</td>
+                        <td className="text-right">{s.status === "cancelled" ? <Badge tone="gray">Annulée</Badge> : s.dueAmount > 0 ? <Badge tone="amber">Reste {m(s.dueAmount)}</Badge> : <Badge tone="green">Payée</Badge>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
           <Card title="Factures">
             {data.invoices.length === 0 ? <p className="text-sm text-slate-500">Aucune facture.</p> : (
-              <table className="table">
-                <tbody>
-                  {data.invoices.map((i) => (
-                    <tr key={i.id}>
-                      <td><Link href={`/invoices/${i.id}`} className="font-medium hover:text-brand-700">{i.number}</Link></td>
-                      <td>{formatDate(i.issueDate)}</td>
-                      <td className="text-right">{m(i.total)}</td>
-                      <td className="text-right"><Badge tone={INVOICE_STATUS[i.status].tone}>{INVOICE_STATUS[i.status].label}</Badge></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <tbody>
+                    {data.invoices.map((i) => (
+                      <tr key={i.id}>
+                        <td><Link href={`/invoices/${i.id}`} className="font-medium hover:text-brand-700">{i.number}</Link></td>
+                        <td>{formatDate(i.issueDate)}</td>
+                        <td className="text-right">{m(i.total)}</td>
+                        <td className="text-right"><Badge tone={INVOICE_STATUS[i.status].tone}>{INVOICE_STATUS[i.status].label}</Badge></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
           <Card title="Paiements">
             {data.payments.length === 0 ? <p className="text-sm text-slate-500">Aucun paiement.</p> : (
-              <table className="table">
-                <tbody>
-                  {data.payments.map((p) => (
-                    <tr key={p.id}>
-                      <td>{formatDate(p.createdAt, true)}</td>
-                      <td>{p.method}</td>
-                      <td className="text-right">{m(p.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <tbody>
+                    {data.payments.map((p) => (
+                      <tr key={p.id}>
+                        <td>{formatDate(p.createdAt, true)}</td>
+                        <td>{p.method}</td>
+                        <td className="text-right">{m(p.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
         </div>

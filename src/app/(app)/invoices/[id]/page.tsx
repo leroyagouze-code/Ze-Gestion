@@ -6,14 +6,15 @@ import { Badge, Card, Field, PageHeader, SelectField } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { NotFoundError } from "@/lib/errors";
-import { formatMoney, formatQty } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { INVOICE_STATUS } from "@/modules/invoices/labels";
 import { getInvoice } from "@/modules/invoices/service";
 import { listPaymentMethods } from "@/modules/sales/service";
 import { cancelInvoiceAction, invoicePaymentAction } from "../actions";
 
-export default async function InvoicePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ erreur?: string }> }) {
+  const { erreur } = await searchParams;
   const ctx = await requireContext("invoices.view");
   const { id } = await params;
   const { invoice: inv, items } = await getInvoice(ctx, id).catch((e) => {
@@ -46,15 +47,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             {inv.customerId ? <Link href={`/customers/${inv.customerId}`} className="font-medium text-brand-700">{c?.name}</Link> : <div className="font-medium">{c?.name ?? "Client comptoir"}</div>}
             {inv.saleId && <div className="mt-1"><Link href={`/sales/${inv.saleId}`} className="text-slate-500 hover:underline">Voir la vente d&apos;origine</Link></div>}
           </div>
+          {inv.notes && <p className="mb-4 whitespace-pre-line rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{inv.notes}</p>}
           <div className="overflow-x-auto">
             <table className="table">
               <thead>
                 <tr>
                   <th>Désignation</th>
                   <th className="text-right">Qté</th>
-                  <th className="text-right">P.U.</th>
+                  <th className="text-right">P.U. {priceBasis(inv.taxMode)}</th>
                   <th className="text-right">TVA</th>
-                  <th className="text-right">Total</th>
+                  <th className="text-right">Total {priceBasis(inv.taxMode)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -64,7 +66,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                     <td className="text-right">{formatQty(it.quantity)}</td>
                     <td className="text-right">{m(it.unitPrice)}</td>
                     <td className="text-right">{formatQty(it.taxRate)} %</td>
-                    <td className="text-right">{m(it.lineTotal)}</td>
+                    <td className="text-right">{m(shownLineTotal(it, inv.taxMode))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -82,6 +84,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           <Card title="Partager avec le client">
             <ShareInvoice url={publicUrl} number={inv.number} total={m(inv.total)} phone={c?.phone} email={c?.email} companyName={ctx.company.name} />
           </Card>
+          {open && inv.saleId && inv.customerId && (
+            <Card title="Encaisser le reste">
+              <p className="mb-3 text-sm text-slate-600">Cette facture vient d&apos;une vente à crédit : le paiement s&apos;enregistre sur la fiche du client et met cette facture à jour.</p>
+              <Link href={`/customers/${inv.customerId}`} className="btn-primary w-full">Ouvrir la fiche client</Link>
+            </Card>
+          )}
           {canPay && (
             <Card title="Enregistrer un paiement">
               <ActionForm action={invoicePaymentAction.bind(null, inv.id)} className="space-y-3" resetOnSuccess>
@@ -90,6 +98,24 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 <Field label="Référence" name="reference" />
                 <SubmitButton>Enregistrer</SubmitButton>
               </ActionForm>
+            </Card>
+          )}
+          {inv.status !== "cancelled" && can(ctx.permissions, "invoices.cancel") && (
+            <Card title="Une erreur sur la facture ?">
+              {erreur && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erreur}</p>}
+              {inv.saleId ? (
+                <p className="text-sm text-slate-600">
+                  Cette facture vient d&apos;une vente de caisse. Pour la corriger, annulez la vente (le stock est remis) puis refaites-la.{" "}
+                  <Link href={`/sales/${inv.saleId}`} className="text-brand-700 hover:underline">Ouvrir la vente</Link>
+                </p>
+              ) : inv.paidAmount > 0 ? (
+                <p className="text-sm text-slate-600">Un paiement a déjà été enregistré : annulez la facture avec un motif ci-dessous, puis créez la nouvelle facture.</p>
+              ) : (
+                <>
+                  <p className="mb-3 text-sm text-slate-600">Reprenez la facture, modifiez-la ; l&apos;ancienne sera annulée automatiquement et gardée dans l&apos;historique.</p>
+                  <Link href={`/invoices/new?corrige=${inv.id}`} className="btn-primary w-full">Corriger la facture</Link>
+                </>
+              )}
             </Card>
           )}
           {inv.status !== "cancelled" && can(ctx.permissions, "invoices.cancel") && (

@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { withTenant, withUser } from "@/db/tenant";
 import { audit } from "@/lib/audit";
+import { getCountry, isTimeZone } from "@/lib/countries";
 import { DEFAULT_ROLES } from "@/lib/permissions";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
@@ -86,6 +87,7 @@ export async function signup(raw: SignupInput, meta: { ip?: string | null; userA
       city: input.city,
       country: input.country,
       currency: input.currency,
+      timezone: input.timezone && isTimeZone(input.timezone) ? input.timezone : (getCountry(input.country)?.timezone ?? "UTC"),
       taxId: input.taxId,
       billingAddress: input.billingAddress,
       extraInfo: input.extraInfo,
@@ -110,10 +112,16 @@ export async function signup(raw: SignupInput, meta: { ip?: string | null; userA
       .returning({ id: stores.id });
 
     await tx.insert(memberships).values({ companyId, userId, roleId: adminRole.id, storeId: store.id, isOwner: true });
-    await tx.insert(taxes).values([
-      { companyId, name: "TVA 18 %", rate: 18, isDefault: true },
-      { companyId, name: "Exonéré", rate: 0 },
-    ]);
+    // TVA de départ selon le pays (taux standard connu), sinon « Exonéré » seul, à compléter
+    const vat = getCountry(input.country)?.vat;
+    await tx.insert(taxes).values(
+      vat
+        ? [
+            { companyId, name: `TVA ${String(vat).replace(".", ",")} %`, rate: vat, isDefault: true },
+            { companyId, name: "Exonéré", rate: 0 },
+          ]
+        : [{ companyId, name: "Exonéré", rate: 0, isDefault: true }],
+    );
     await tx
       .insert(paymentMethods)
       .values(DEFAULT_PAYMENT_METHODS.map((p, i) => ({ companyId, ...p, sortOrder: i })));

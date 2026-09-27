@@ -4,6 +4,7 @@ import type { AppContext } from "@/modules/auth/context";
 import { formatDate } from "@/lib/dates";
 import Link from "next/link";
 import { isDesktop } from "@/lib/license";
+import { isHiddenHref } from "@/lib/modules";
 import { can, type Permission } from "@/lib/permissions";
 import { logoutAction } from "../(auth)/actions";
 
@@ -85,7 +86,7 @@ function SubscriptionBanner({ state, isAdmin }: { state: AppContext["subscriptio
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireContext();
-  const items: NavItem[] = NAV.filter((n) => !n.perm || can(ctx.permissions, n.perm)).map(({ href, label, icon }) => ({ href, label, icon }));
+  const items: NavItem[] = NAV.filter((n) => (!n.perm || can(ctx.permissions, n.perm)) && !isHiddenHref(n.href, ctx.company.hiddenModules)).map(({ href, label, icon }) => ({ href, label, icon }));
   if (isDesktop() && ctx.isAdmin) items.push({ href: "/licence", label: "Licence", icon: "licence" });
   if (ctx.user.isSuperAdmin) items.push({ href: "/admin", label: "Super admin", icon: "admin" });
   return (
