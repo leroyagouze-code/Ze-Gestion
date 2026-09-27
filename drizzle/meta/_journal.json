@@ -43,6 +43,13 @@
       "when": 1790492120947,
       "tag": "0005_securite",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790493926923,
+      "tag": "0006_abonnements",
+      "breakpoints": true
     }
   ]
 }

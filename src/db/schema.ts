@@ -92,9 +92,34 @@ export const subscriptions = pgTable("subscriptions", {
   status: subscriptionStatus("status").notNull().default("trialing"),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  /** Accès complet offert par la plateforme : ni date de fin, ni limite de formule. */
+  unlimited: boolean("unlimited").notNull().default(false),
+  notes: text("notes"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/** Paiements d'abonnement reçus par la plateforme (TMoney, Flooz, espèces…), saisis par le super admin. */
+export const subscriptionPayments = pgTable(
+  "subscription_payments",
+  {
+    id: id(),
+    companyId: companyId(),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id),
+    amount: money("amount").notNull(),
+    currency: text("currency").notNull().default("XOF"),
+    method: text("method").notNull(),
+    reference: text("reference"),
+    months: integer("months").notNull(),
+    periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+    periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+    recordedBy: uuid("recorded_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("subscription_payments_company_idx").on(t.companyId, t.createdAt)],
+);
 
 export const users = pgTable("users", {
   id: id(),
