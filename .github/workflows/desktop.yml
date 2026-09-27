@@ -41,7 +41,7 @@ jobs:
       # Même test sur les fichiers réellement mis dans l'installateur (un fichier oublié au packaging fait échouer ici)
       - name: Test de démarrage de l'application empaquetée
         timeout-minutes: 5
-        run: node build/smoke-test.cjs "$env:RUNNER_TEMP\ze-gestion-packaged"
+        run: node build/smoke-test.cjs "$env:TEMP\ze-gestion-packaged"
         working-directory: desktop
         env:
           ZE_RESOURCES: ${{ github.workspace }}\desktop\dist\win-unpacked\resources
@@ -54,4 +54,4 @@ jobs:
       - name: Journaux en cas d'échec
         if: failure()
         shell: bash
-        run: cat "$TEMP/ze-gestion-smoke/logs/"*.log "$RUNNER_TEMP/ze-gestion-packaged/logs/"*.log || true
+        run: cat "$TEMP/ze-gestion-smoke/logs/"*.log "$TEMP/ze-gestion-packaged/logs/"*.log || true
