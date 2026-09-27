@@ -5,7 +5,7 @@ import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money"
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { APP_NAME, APP_PUBLISHER } from "@/lib/brand";
-import { isLightTransparentLogo, readStoredFile } from "@/lib/storage";
+import { isLightTransparentLogo, loadSharp, readStoredFile } from "@/lib/storage";
 
 type Company = typeof companies.$inferSelect;
 
@@ -32,7 +32,8 @@ function logoSrc(company: Company) {
 async function loadLogo(url: string, brandColor: string) {
   const f = await readStoredFile(url);
   if (!f || f.type === "application/pdf") return null;
-  const { default: sharp } = await import("sharp");
+  const sharp = await loadSharp();
+  if (!sharp) return f.type === "image/webp" ? null : { data: f.data, format: f.type === "image/png" ? ("png" as const) : ("jpg" as const) };
   if (await isLightTransparentLogo(f.data)) {
     const img = sharp(f.data).resize(600, 300, { fit: "inside", withoutEnlargement: true });
     const { width = 600, height = 300 } = await img.metadata().then(async () => (await img.clone().png().toBuffer({ resolveWithObject: true })).info);

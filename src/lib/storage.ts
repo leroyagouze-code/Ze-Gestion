@@ -58,8 +58,7 @@ export async function putFile(companyId: string, file: File, opts: { imagesOnly?
   if (!ext) throw new BusinessError("Format non autorisé (PNG, JPEG, WebP ou PDF)");
   if (opts.imagesOnly && ext === "pdf") throw new BusinessError("Image attendue (PNG, JPEG ou WebP)");
   if (opts.logo) {
-    buf = await normalizeLogo(buf);
-    ext = "png";
+    ({ data: buf, ext } = await normalizeLogo(buf));
   }
   const base = path.join(ROOT, companyId);
   if ((await dirSize(base)) + buf.length > COMPANY_QUOTA) {
@@ -94,11 +93,25 @@ export async function readStoredFile(url: string) {
   }
 }
 
-/** Logo : bords transparents retirés, 1000 × 500 px au plus, en PNG (lisible par le générateur de PDF). */
-export async function normalizeLogo(buf: Buffer) {
-  const { default: sharp } = await import("sharp");
+/** sharp (module natif) ; absent sur Android : les images sont alors gardées telles quelles. */
+export async function loadSharp() {
   try {
-    return await sharp(buf).trim().resize(1000, 500, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
+    return (await import("sharp")).default;
+  } catch {
+    return null;
+  }
+}
+
+/** Logo : bords transparents retirés, 1000 × 500 px au plus, en PNG (lisible par le générateur de PDF). */
+export async function normalizeLogo(buf: Buffer): Promise<{ data: Buffer; ext: "png" | "jpg" | "webp" }> {
+  const sharp = await loadSharp();
+  if (!sharp) {
+    const ext = sniff(buf);
+    if (ext === "png" || ext === "jpg") return { data: buf, ext };
+    throw new BusinessError("Sur ce téléphone, le logo doit être un fichier PNG ou JPEG.");
+  }
+  try {
+    return { data: await sharp(buf).trim().resize(1000, 500, { fit: "inside", withoutEnlargement: true }).png().toBuffer(), ext: "png" };
   } catch {
     throw new BusinessError("Image illisible. Essayez un fichier PNG ou JPEG.");
   }
@@ -109,7 +122,8 @@ export async function normalizeLogo(buf: Buffer) {
  * Renvoie vrai si la moyenne des pixels visibles est très claire.
  */
 export async function isLightTransparentLogo(buf: Buffer) {
-  const { default: sharp } = await import("sharp");
+  const sharp = await loadSharp();
+  if (!sharp) return false;
   const { data, info } = await sharp(buf).resize(64, 64, { fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   let sum = 0;
   let n = 0;

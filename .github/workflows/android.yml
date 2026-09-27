@@ -1,0 +1,130 @@
+name: Appli Android
+
+# Construit l'APK autonome (ZE Gestion + base de données dans le téléphone, sans internet),
+# vérifie le démarrage avec Node 18 (celui de nodejs-mobile), puis sur un téléphone virtuel Android.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["android/**", ".github/workflows/android.yml"]
+  push:
+    branches: [main]
+    paths: ["android/**", "src/**", "drizzle/**", "package-lock.json"]
+
+env:
+  NODEJS_MOBILE_VERSION: v18.20.4
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Assembler l'application Node
+        run: node android/build/prepare.mjs
+
+      # Même version de Node que dans le téléphone : un module trop récent échoue ici, pas chez le client
+      - name: Test de démarrage avec Node 18
+        timeout-minutes: 5
+        run: |
+          npm pack node-linux-x64@18.20.4 --silent --pack-destination /tmp
+          tar xzf /tmp/node-linux-x64-18.20.4.tgz -C /tmp
+          cd android/build/nodejs-project
+          /tmp/package/bin/node main.cjs /tmp/ze-android > /tmp/ze-android.log 2>&1 &
+          for i in $(seq 1 120); do [ -f /tmp/ze-android/ready.json ] && break; sleep 1; done
+          cat /tmp/ze-android/ready.json
+          grep -q '"url"' /tmp/ze-android/ready.json
+          URL=$(node -p 'require("/tmp/ze-android/ready.json").url')
+          curl -fsS -o /dev/null -w "login %{http_code}\n" "$URL/login"
+          curl -fsS -o /dev/null -w "signup %{http_code}\n" "$URL/signup"
+
+      - name: Télécharger Node pour Android (nodejs-mobile)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$NODEJS_MOBILE_VERSION" -R nodejs-mobile/nodejs-mobile -p "*android*" -D /tmp/nm
+          cd /tmp/nm && unzip -q *.zip && find . -name libnode.so && find . -name node.h
+          dest="$GITHUB_WORKSPACE/android/app/libnode"
+          mkdir -p "$dest/bin" "$dest/include"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            so=$(find /tmp/nm -path "*/$abi/libnode.so" | head -1)
+            mkdir -p "$dest/bin/$abi" && cp "$so" "$dest/bin/$abi/"
+          done
+          inc=$(dirname "$(find /tmp/nm -name node.h | head -1)")
+          cp -r "$inc" "$dest/include/node"
+          ls -la "$dest"/bin/*
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Construire les APK
+        working-directory: android
+        env:
+          ZE_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ZE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ZE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ZE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ZE_KEYSTORE_B64" ]; then echo "$ZE_KEYSTORE_B64" | base64 -d > /tmp/release.p12; export ZE_KEYSTORE=/tmp/release.p12; fi
+          export ZE_NDK_VERSION=$(basename "$ANDROID_NDK_LATEST_HOME")
+          echo "NDK $ZE_NDK_VERSION"
+          gradle assembleRelease --no-daemon --stacktrace
+          V=$(node -p 'require("./app/version.json").versionName')
+          mkdir -p dist
+          for f in app/build/outputs/apk/release/*.apk; do
+            abi=$(basename "$f" | sed -E 's/app-(.*)-release.apk/\1/')
+            cp "$f" "dist/ZE-Gestion-$V-$abi.apk"
+          done
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZE-Gestion-Android
+          path: android/dist/*.apk
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-x86_64
+          path: android/dist/*x86_64.apk
+          retention-days: 3
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: cat /tmp/ze-android.log /tmp/ze-android/logs/*.log 2>/dev/null | tail -200 || true
+
+  emulateur:
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk-x86_64
+          path: apk
+      - name: Activer KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Installer et lancer l'appli sur un téléphone virtuel (Android 11)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          ram-size: 3072M
+          disable-animations: true
+          script: bash android/build/emulator-test.sh apk/*.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-emulateur
+          path: /tmp/emu
+          retention-days: 7

@@ -1,0 +1,15 @@
+{
+  "name": "ze-gestion-android-node",
+  "private": true,
+  "description": "Démarrage de ZE Gestion sur Android : base PGlite, migrations, serveur Next.js (Node 18 de nodejs-mobile)",
+  "main": "main.cjs",
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11",
+    "drizzle-orm": "0.45.3",
+    "pg": "8.23.0"
+  },
+  "zeGestion": {
+    "serverUrl": ""
+  }
+}
