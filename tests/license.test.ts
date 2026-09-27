@@ -17,7 +17,7 @@ vi.mock("@/lib/license", async (orig) => {
   return { ...real, verifyLicense: (code: string, id: string) => real.verifyLicense(code, id, TEST_X) };
 });
 
-const { createLicense, verifyLicense } = await vi.importActual<typeof import("@/lib/license")>("@/lib/license");
+const { createLicense, normalizeCode, verifyLicense } = await vi.importActual<typeof import("@/lib/license")>("@/lib/license");
 const { activateLicense, issueLicense, licenseEnd } = await import("@/modules/billing/license");
 
 const PC = "7K2P-QX9M";
@@ -31,8 +31,10 @@ describe("codes de licence", () => {
     expect(verifyLicense(code, PC, TEST_X)).toMatchObject({ plan: "PRO" });
     expect(verifyLicense(code.toLowerCase().replace(/-/g, " "), "7k2p qx9m", TEST_X)).toMatchObject({ plan: "PRO" });
     expect(verifyLicense(code, "AAAA-BBBB", TEST_X)).toBeNull();
-    const last = code.at(-1) === "A" ? "B" : "A";
-    expect(verifyLicense(code.slice(0, -1) + last, PC, TEST_X)).toBeNull();
+    // Un caractère modifié dans la signature (le dernier caractère porte aussi des bits de remplissage)
+    const raw = normalizeCode(code);
+    const tampered = raw.slice(0, 50) + (raw[50] === "A" ? "B" : "A") + raw.slice(51);
+    expect(verifyLicense(tampered, PC, TEST_X)).toBeNull();
     // Signé avec une autre clé : refusé par la clé intégrée au logiciel
     expect(verifyLicense(code, PC)).toBeNull();
     expect(verifyLicense(createLicense(TEST_D, PC, "BASIC", null), PC, TEST_X)).toEqual({ plan: "BASIC", expiresAt: null });
