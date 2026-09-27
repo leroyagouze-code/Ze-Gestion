@@ -39,7 +39,6 @@ jobs:
       # Node compilé pour Android (Termux, avec ICU complet pour les dates et montants)
       - name: Récupérer Node pour Android
         run: |
-          sudo apt-get install -y -q patchelf
           ZE_KEEP_RAW=$GITHUB_WORKSPACE/android/dist/raw node android/build/fetch-node.mjs
 
       - uses: actions/setup-java@v4
