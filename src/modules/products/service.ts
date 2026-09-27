@@ -183,7 +183,7 @@ export async function updateProduct(ctx: AppContext, id: string, raw: ProductInp
     const priceChanges: Record<string, [number | null, number | null]> = {};
     if (before.salePrice !== input.salePrice) priceChanges.salePrice = [before.salePrice, input.salePrice];
     if (canCost && before.purchasePrice !== input.purchasePrice) priceChanges.purchasePrice = [before.purchasePrice, input.purchasePrice];
-    if ((before.promoPrice ?? null) !== input.promoPrice) priceChanges.promoPrice = [before.promoPrice, input.promoPrice];
+    if ((before.promoPrice ?? null) !== (input.promoPrice ?? null)) priceChanges.promoPrice = [before.promoPrice, input.promoPrice ?? null];
     await audit(tx, {
       companyId: ctx.companyId,
       userId: ctx.userId,

@@ -1,0 +1,30 @@
+export const COUNTRIES = [
+  { value: "TG", label: "Togo" },
+  { value: "BJ", label: "Bénin" },
+  { value: "CI", label: "Côte d'Ivoire" },
+  { value: "SN", label: "Sénégal" },
+  { value: "BF", label: "Burkina Faso" },
+  { value: "ML", label: "Mali" },
+  { value: "NE", label: "Niger" },
+  { value: "GW", label: "Guinée-Bissau" },
+  { value: "GN", label: "Guinée" },
+  { value: "GH", label: "Ghana" },
+  { value: "NG", label: "Nigeria" },
+  { value: "CM", label: "Cameroun" },
+  { value: "GA", label: "Gabon" },
+  { value: "CG", label: "Congo" },
+  { value: "CD", label: "RD Congo" },
+  { value: "FR", label: "France" },
+  { value: "US", label: "États-Unis" },
+];
+
+export const CURRENCIES = [
+  { value: "XOF", label: "Franc CFA UEMOA (FCFA)" },
+  { value: "XAF", label: "Franc CFA CEMAC (FCFA)" },
+  { value: "GHS", label: "Cedi (GHS)" },
+  { value: "NGN", label: "Naira (NGN)" },
+  { value: "GNF", label: "Franc guinéen (GNF)" },
+  { value: "CDF", label: "Franc congolais (CDF)" },
+  { value: "EUR", label: "Euro (EUR)" },
+  { value: "USD", label: "Dollar US (USD)" },
+];

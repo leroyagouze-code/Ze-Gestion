@@ -25,7 +25,7 @@ export const num = (opts: { min?: number } = {}) =>
 export const optNum = z.preprocess(
   (v) => (v === "" || v === null || v === undefined ? null : typeof v === "string" ? Number(v.replace(/\s/g, "").replace(",", ".")) : v),
   z.number().finite().min(0).nullable(),
-);
+).optional();
 
 export function formToObject(fd: FormData) {
   const o: Record<string, string> = {};
