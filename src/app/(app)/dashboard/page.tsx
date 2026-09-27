@@ -3,6 +3,7 @@ import { RevenueChart, TopProductsChart } from "@/components/charts";
 import { parsePeriod, PeriodFilter } from "@/components/period-filter";
 import { Badge, Card, PageHeader, Stat } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
+import { can } from "@/lib/permissions";
 import { formatDate } from "@/lib/dates";
 import { formatMoney, formatQty } from "@/lib/money";
 import { dashboardStats, periodRange, PERIOD_LABELS } from "@/modules/dashboard/service";
@@ -22,9 +23,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         title="Tableau de bord"
         subtitle={`${ctx.company.name} · ${PERIOD_LABELS[period]}`}
         actions={
-          <Link href="/pos" className="btn-primary">
-            Nouvelle vente
-          </Link>
+          can(ctx.permissions, "sales.create") && (
+            <Link href="/pos" className="btn-primary">
+              Nouvelle vente
+            </Link>
+          )
         }
       />
       <PeriodFilter current={period} from={sp.from} to={sp.to} />

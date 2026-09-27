@@ -2,6 +2,7 @@ import Link from "next/link";
 import { parsePeriod, PeriodFilter } from "@/components/period-filter";
 import { Badge, EmptyState, PageHeader, Pagination, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
+import { can } from "@/lib/permissions";
 import { formatDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { periodRange } from "@/modules/dashboard/service";
@@ -18,7 +19,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   const m = (v: number) => formatMoney(v, ctx.company.currency);
   return (
     <>
-      <PageHeader title="Ventes" actions={<Link href="/pos" className="btn-primary">Nouvelle vente</Link>} />
+      <PageHeader title="Ventes" actions={can(ctx.permissions, "sales.create") && <Link href="/pos" className="btn-primary">Nouvelle vente</Link>} />
       <PeriodFilter current={period ?? "custom"} from={sp.from} to={sp.to} />
       <div className="card">
         {data.rows.length === 0 ? (

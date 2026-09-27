@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/server";
-import { setCompanyPlan, setCompanyStatus } from "@/modules/admin/service";
+import { extendTrial, setCompanyPlan, setCompanyStatus } from "@/modules/admin/service";
 
 async function admin() {
   const s = await getSession();
@@ -20,5 +20,11 @@ export async function setStatusAction(companyId: string, status: "active" | "sus
 export async function setPlanAction(companyId: string, fd: FormData) {
   const s = await admin();
   await setCompanyPlan(s, companyId, String(fd.get("planId")));
+  revalidatePath("/admin");
+}
+
+export async function extendTrialAction(companyId: string) {
+  const s = await admin();
+  await extendTrial(s, companyId, 14);
   revalidatePath("/admin");
 }

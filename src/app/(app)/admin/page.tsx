@@ -4,7 +4,28 @@ import { getSession } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { platformStats } from "@/modules/admin/service";
-import { setPlanAction, setStatusAction } from "./actions";
+import { computeState } from "@/modules/billing/access";
+import { extendTrialAction, setPlanAction, setStatusAction } from "./actions";
+
+const STATUS_LABELS: Record<string, string> = { trialing: "Essai", active: "Payé", past_due: "Impayé", suspended: "Suspendu", canceled: "Résilié" };
+
+function SubscriptionCell({ companyId, status, trialEndsAt }: { companyId: string; status: string | null; trialEndsAt: Date | null }) {
+  if (!status) return null;
+  const st = computeState({ status, trialEndsAt, planName: "" });
+  return (
+    <div className="mt-1 text-xs text-slate-500">
+      {STATUS_LABELS[status] ?? status}
+      {st.trialDaysLeft !== null && ` · ${st.trialDaysLeft} j restants`}
+      {st.readOnly && <span className="font-medium text-amber-700"> · lecture seule</span>}
+      {status === "trialing" && (
+        <form action={extendTrialAction.bind(null, companyId)} className="inline">
+          {" "}
+          <button className="text-brand-700 hover:underline">+14 j</button>
+        </form>
+      )}
+    </div>
+  );
+}
 
 export const metadata = { title: "Super admin" };
 
@@ -44,7 +65,7 @@ export default async function AdminPage() {
                       </select>
                       <button className="btn-secondary px-2 py-1">OK</button>
                     </form>
-                    {c.subStatus && <div className="mt-1 text-xs text-slate-500">{c.subStatus}</div>}
+                    <SubscriptionCell companyId={c.id} status={c.subStatus} trialEndsAt={c.trialEndsAt} />
                   </td>
                   <td>{c.status === "active" ? <Badge tone="green">Active</Badge> : <Badge tone="red">Suspendue</Badge>}</td>
                   <td>
