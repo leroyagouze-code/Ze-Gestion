@@ -6,7 +6,7 @@ Architecture, schéma de base de données, permissions et stratégie de déploie
 
 ## Installer sur un ordinateur (sans être développeur)
 
-Double-cliquez sur `Demarrer-ZE-Gestion.bat` (Windows) ou `demarrer-ze-gestion.sh` (Mac, Linux) après avoir installé Docker Desktop. Guide pas à pas : [`docs/INSTALLATION-ORDINATEUR.md`](docs/INSTALLATION-ORDINATEUR.md).
+Double-cliquez sur `Demarrer-ZE-Gestion.bat` (Windows) ou `demarrer-ze-gestion.sh` (Mac, Linux) après avoir installé Docker Desktop. Guide pas à pas : [`docs/INSTALLATION-ORDINATEUR.md`](docs/INSTALLATION-ORDINATEUR.md). Si Docker ne démarre pas (virtualisation désactivée), installez sans Docker : [`docs/INSTALLATION-SANS-DOCKER.md`](docs/INSTALLATION-SANS-DOCKER.md).
 
 ## Démarrage local (développeurs)
 

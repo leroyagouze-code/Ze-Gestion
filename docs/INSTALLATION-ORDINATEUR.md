@@ -2,6 +2,8 @@
 
 Pour essayer ZE Gestion ou l'utiliser dans une boutique, sur **un seul ordinateur**. Pour que plusieurs boutiques et téléphones y accèdent par internet, il faut l'installer sur un serveur : voir `DEPLOIEMENT.md`.
 
+Si Docker Desktop affiche « Virtualization support not detected », suivez plutôt `INSTALLATION-SANS-DOCKER.md`.
+
 ## Ce qu'il faut
 
 - Windows 10 ou 11 (64 bits), un Mac, ou Linux.
