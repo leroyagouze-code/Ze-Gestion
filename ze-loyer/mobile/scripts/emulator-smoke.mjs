@@ -176,7 +176,7 @@ async function main() {
     f.querySelector('input[name=password]').value = 'zeloyer2026';
     f.requestSubmit();
     return true;
-  })()`);
+  })()`, { userGesture: true });
   p = await waitFor("espace locataire après connexion", async () => {
     const x = await page();
     return x.path === "/mon-espace" && x.text.includes("Bonjour Kossi") ? x : null;
@@ -186,7 +186,8 @@ async function main() {
   shot("mon-espace");
 
   log("Quittances");
-  await js("location.href = '/mon-espace/quittances'; true");
+  // Comme un toucher réel : Android ignore, pour le bouton retour, les pages ouvertes sans action de l'utilisateur
+  await js("location.href = '/mon-espace/quittances'; true", { userGesture: true });
   await waitFor("page des quittances", async () => {
     const x = await page();
     return x.path === "/mon-espace/quittances" && x.text.includes("Mes quittances") ? x : null;
