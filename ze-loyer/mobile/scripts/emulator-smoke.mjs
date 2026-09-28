@@ -212,6 +212,7 @@ async function main() {
   log("Bouton retour Android");
   p = await page();
   if (p.path !== "/mon-espace/quittances") throw new Error(`Le téléchargement a quitté la page (${p.path})`);
+  log(`historique avant retour : ${await js("history.length")} entrée(s)`);
   adb("shell", "input", "keyevent", "4");
   await waitFor("retour à l'accueil du locataire", async () => (await page()).path === "/mon-espace");
   shot("retour");
@@ -239,7 +240,8 @@ main().catch((e) => {
   console.error(`❌ ${e.message}`);
   try {
     shot("echec");
-    writeFileSync(`${OUT}/logcat.txt`, adb("logcat", "-d", "-t", "2000"));
+    writeFileSync(`${OUT}/logcat.txt`, adb("logcat", "-d"));
+    writeFileSync(`${OUT}/logcat-zeloyer.txt`, adb("logcat", "-d", "-s", "ZeLoyer:*", "Capacitor:*", "Capacitor/Plugin:*"));
   } catch {}
   process.exit(1);
 });

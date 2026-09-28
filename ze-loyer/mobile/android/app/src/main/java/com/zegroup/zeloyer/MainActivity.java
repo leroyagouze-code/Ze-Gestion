@@ -6,10 +6,13 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.util.Log;
+import android.view.KeyEvent;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
 import android.webkit.WebView;
 import android.widget.Toast;
+import androidx.activity.OnBackPressedCallback;
 import com.getcapacitor.BridgeActivity;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,6 +26,8 @@ import java.util.regex.Pattern;
  */
 public class MainActivity extends BridgeActivity {
 
+    private static final String TAG = "ZeLoyer";
+
     private static final Pattern FILENAME = Pattern.compile("filename\\*?=(?:UTF-8'')?\"?([^\";]+)\"?", Pattern.CASE_INSENSITIVE);
 
     @Override
@@ -30,6 +35,42 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         WebView webView = getBridge().getWebView();
         webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> download(url, userAgent, contentDisposition, mimeType));
+
+        // Bouton / geste « retour » d'Android : page précédente de ZE LOYER s'il y en a une, sinon on quitte
+        // normalement. Enregistré en dernier, il passe avant les gestionnaires des plugins.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                WebView w = getBridge().getWebView();
+                boolean canGoBack = w.canGoBack();
+                Log.i(TAG, "retour : canGoBack=" + canGoBack);
+                if (canGoBack) {
+                    w.goBack();
+                } else {
+                    // Première page : comportement standard d'Android (l'application passe en arrière-plan)
+                    moveTaskToBack(true);
+                }
+            }
+        });
+    }
+
+    /**
+     * Anciens chemins de la touche retour (touche physique, versions d'Android où le rappel ci-dessus n'est
+     * pas appelé) : même comportement.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && getBridge() != null) {
+            WebView w = getBridge().getWebView();
+            if (w != null && w.canGoBack()) {
+                if (event.getAction() == KeyEvent.ACTION_UP) {
+                    Log.i(TAG, "retour (touche) : page précédente");
+                    w.goBack();
+                }
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     private void download(String url, String userAgent, String contentDisposition, String mimeType) {
