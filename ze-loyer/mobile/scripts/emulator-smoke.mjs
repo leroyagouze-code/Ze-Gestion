@@ -25,6 +25,32 @@ function shot(name) {
   log(`capture : ${file}`);
 }
 
+/**
+ * Vérifie sur les pixels réels de l'écran que la page ZE LOYER est visible, et pas l'écran d'ouverture vert
+ * (la WebView peut avoir chargé la page sans qu'elle soit affichée). Échantillons dans les marges haut/bas,
+ * vertes sur l'écran d'ouverture, claires sur les pages de l'application.
+ */
+function assertPageVisible(what) {
+  const raw = execFileSync("adb", ["exec-out", "screencap"], { maxBuffer: 80 * 1024 * 1024 });
+  const w = raw.readUInt32LE(0);
+  const h = raw.readUInt32LE(4);
+  const header = raw.length - w * h * 4;
+  if (header < 12 || header > 16) throw new Error(`Capture d'écran brute illisible (${raw.length} octets, ${w}x${h})`);
+  let green = 0;
+  const pts = [];
+  for (const fy of [0.15, 0.2, 0.75, 0.8]) {
+    for (const fx of [0.08, 0.92]) {
+      const o = header + (Math.floor(h * fy) * w + Math.floor(w * fx)) * 4;
+      const [r, g, b] = [raw[o], raw[o + 1], raw[o + 2]];
+      pts.push(`${r},${g},${b}`);
+      // Vert ZE LOYER #0f5f3e (15,95,62), tolérance large
+      if (r < 60 && g > 60 && g < 140 && b < 110) green++;
+    }
+  }
+  if (green >= 6) throw new Error(`${what} : l'écran d'ouverture vert reste affiché au lieu de la page (pixels ${pts.join(" | ")})`);
+  log(`écran vérifié (${what}) : page visible`);
+}
+
 async function waitFor(what, fn, timeoutMs = 90_000) {
   const end = Date.now() + timeoutMs;
   let last;
@@ -72,8 +98,9 @@ function cdp(method, params = {}) {
   ws.send(JSON.stringify({ id, method, params }));
   return new Promise((res) => pending.set(id, res));
 }
-async function js(expression) {
-  const r = await cdp("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+async function js(expression, { userGesture = false } = {}) {
+  // userGesture : se comporte comme un vrai toucher du doigt (sinon Android bloque l'ouverture d'un lien « nouvel onglet »)
+  const r = await cdp("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, userGesture });
   if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.text);
   return r.result?.result?.value;
 }
@@ -94,6 +121,7 @@ async function main() {
   log(`Ouvert sur ${p.href}`);
   const ua = await js("navigator.userAgent");
   if (!ua.includes("ZeLoyerAndroid")) throw new Error(`User-Agent sans ZeLoyerAndroid : ${ua}`);
+  assertPageVisible("page de connexion");
   shot("connexion");
 
   log("Connexion de Kossi (90000003)");
@@ -109,6 +137,7 @@ async function main() {
     return x.path === "/mon-espace" && x.text.includes("Bonjour Kossi") ? x : null;
   });
   if (!/Vous êtes à jour|Vous avez un solde|Vous êtes en avance/.test(p.text)) throw new Error("Situation du locataire absente de l'accueil");
+  assertPageVisible("espace locataire");
   shot("mon-espace");
 
   log("Quittances");
@@ -119,10 +148,11 @@ async function main() {
   });
   const href = await js("(document.querySelector(\"a[href*='/api/quittances/']\") || {}).href || null");
   if (!href) throw new Error("Aucune quittance à télécharger");
+  assertPageVisible("page des quittances");
   shot("quittances");
 
   log(`Téléchargement de ${href}`);
-  await js("document.querySelector(\"a[href*='/api/quittances/']\").click(); true");
+  await js("document.querySelector(\"a[href*='/api/quittances/']\").click(); true", { userGesture: true });
   const file = await waitFor("PDF dans Téléchargements", () => {
     const ls = adb("shell", "ls", "/sdcard/Download/");
     return ls.split(/\s+/).find((f) => /^quittance-ZL-\d{4}-\d{6}.*\.pdf$/.test(f)) ?? null;

@@ -8,8 +8,12 @@ on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: "Adresse HTTPS du site ZE LOYER (vide = variable ZE_LOYER_URL du dépôt)"
+        description: "Adresse du site ZE LOYER (vide = variable ZE_LOYER_URL). Version de test : http://IP-DU-PC:3000"
         required: false
+      test_http:
+        description: "Version de TEST reliée à un PC (autorise http://, à ne pas distribuer)"
+        type: boolean
+        default: false
   pull_request:
     paths: ["ze-loyer/mobile/**", ".github/workflows/ze-loyer-android.yml"]
   push:
@@ -25,6 +29,7 @@ jobs:
         working-directory: ze-loyer/mobile
     env:
       ZE_LOYER_URL: ${{ inputs.server_url || vars.ZE_LOYER_URL }}
+      ZE_LOYER_ALLOW_HTTP: ${{ inputs.test_http && '1' || '' }}
       ZE_BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +76,7 @@ jobs:
           "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner" verify --print-certs "$APK"
       - uses: actions/upload-artifact@v4
         with:
-          name: ZE-LOYER-Android
+          name: ${{ inputs.test_http && 'ZE-LOYER-Android-TEST' || 'ZE-LOYER-Android' }}
           path: ze-loyer/mobile/dist/*.apk
           retention-days: 30
 

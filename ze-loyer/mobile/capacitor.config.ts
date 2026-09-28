@@ -33,12 +33,6 @@ const config: CapacitorConfig = {
     webContentsDebuggingEnabled: allowHttp,
   },
   plugins: {
-    SplashScreen: {
-      launchShowDuration: 1200,
-      launchAutoHide: true,
-      backgroundColor: "#0f5f3e",
-      showSpinner: false,
-    },
     StatusBar: {
       style: "LIGHT",
       backgroundColor: "#0f5f3e",
