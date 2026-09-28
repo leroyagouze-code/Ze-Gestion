@@ -30,7 +30,26 @@ function shot(name) {
  * (la WebView peut avoir chargé la page sans qu'elle soit affichée). Échantillons dans les marges haut/bas,
  * vertes sur l'écran d'ouverture, claires sur les pages de l'application.
  */
-function assertPageVisible(what) {
+async function assertPageVisible(what) {
+  const end = Date.now() + 20_000;
+  for (;;) {
+    try {
+      return checkPixels(what);
+    } catch (e) {
+      if (Date.now() > end) {
+        // Diagnostic : image rendue par la WebView elle-même (si elle montre la page, c'est l'affichage à l'écran qui bloque)
+        try {
+          const r = await cdp("Page.captureScreenshot", { format: "png" });
+          if (r.result?.data) writeFileSync(`${OUT}/diagnostic-webview-${what.replace(/\W+/g, "-")}.png`, Buffer.from(r.result.data, "base64"));
+        } catch {}
+        throw e;
+      }
+      await sleep(1000);
+    }
+  }
+}
+
+function checkPixels(what) {
   const raw = execFileSync("adb", ["exec-out", "screencap"], { maxBuffer: 80 * 1024 * 1024 });
   const w = raw.readUInt32LE(0);
   const h = raw.readUInt32LE(4);
@@ -121,7 +140,7 @@ async function main() {
   log(`Ouvert sur ${p.href}`);
   const ua = await js("navigator.userAgent");
   if (!ua.includes("ZeLoyerAndroid")) throw new Error(`User-Agent sans ZeLoyerAndroid : ${ua}`);
-  assertPageVisible("page de connexion");
+  await assertPageVisible("page de connexion");
   shot("connexion");
 
   log("Connexion de Kossi (90000003)");
@@ -137,7 +156,7 @@ async function main() {
     return x.path === "/mon-espace" && x.text.includes("Bonjour Kossi") ? x : null;
   });
   if (!/Vous êtes à jour|Vous avez un solde|Vous êtes en avance/.test(p.text)) throw new Error("Situation du locataire absente de l'accueil");
-  assertPageVisible("espace locataire");
+  await assertPageVisible("espace locataire");
   shot("mon-espace");
 
   log("Quittances");
@@ -148,7 +167,7 @@ async function main() {
   });
   const href = await js("(document.querySelector(\"a[href*='/api/quittances/']\") || {}).href || null");
   if (!href) throw new Error("Aucune quittance à télécharger");
-  assertPageVisible("page des quittances");
+  await assertPageVisible("page des quittances");
   shot("quittances");
 
   log(`Téléchargement de ${href}`);

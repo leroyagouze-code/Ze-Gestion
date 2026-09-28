@@ -80,7 +80,7 @@ jobs:
           path: ze-loyer/mobile/dist/*.apk
           retention-days: 30
 
-  # Test de bout en bout sur un vrai émulateur Android (accéléré KVM) : APK de TEST relié à un site de démo local.
+  # Test de bout en bout sur un vrai émulateur Android 14 (accéléré KVM) : APK de TEST relié à un site de démo local.
   emulator:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -135,15 +135,15 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Parcours sur émulateur Android 11
+      - name: Parcours sur émulateur Android 14
         uses: reactivecircus/android-emulator-runner@v2
         env:
           SMOKE_OUT: ${{ github.workspace }}/ze-loyer/mobile/smoke
           SMOKE_STOP_SERVER: pkill -f "next[ ]dev" ; pkill -f "next-serve[r]" ; true
         with:
-          api-level: 30
+          api-level: 34
           arch: x86_64
-          target: default
+          target: google_apis
           profile: pixel_4
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
