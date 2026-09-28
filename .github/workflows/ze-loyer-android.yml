@@ -140,6 +140,11 @@ jobs:
         env:
           SMOKE_OUT: ${{ github.workspace }}/ze-loyer/mobile/smoke
           SMOKE_STOP_SERVER: pkill -f "next[ ]dev" ; pkill -f "next-serve[r]" ; true
+          SMOKE_START_SERVER: >-
+            cd ${{ github.workspace }}/ze-loyer &&
+            (nohup npx next dev -p 3000 -H 0.0.0.0 >> ${{ runner.temp }}/site.log 2>&1 &) ;
+            for i in $(seq 1 90); do curl -sf localhost:3000/api/health && break; sleep 2; done ;
+            curl -s -o /dev/null localhost:3000/connexion
         with:
           api-level: 34
           arch: x86_64

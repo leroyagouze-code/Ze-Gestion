@@ -1,6 +1,6 @@
 node_modules
-# Généré par scripts/configure.mjs
-www/config.json
+# Généré par scripts/configure.mjs (à partir de scripts/templates/)
+www/
 # Fichiers de construction Android
 android/app/build
 android/build

@@ -2,7 +2,8 @@
 // Prérequis : émulateur démarré (adb), site ZE LOYER de démo joignable depuis l'émulateur (ZE_LOYER_URL,
 // ex. http://10.0.2.2:3000), APK de test construit avec ZE_LOYER_ALLOW_HTTP=1 (débogage WebView activé).
 // Parcours : ouverture → connexion de Kossi (locataire démo) → mon espace → quittances → téléchargement PDF
-// → bouton retour Android → écran « Pas de connexion » quand le serveur est arrêté.
+// → bouton retour Android → écran « Pas de connexion » (mis en forme) quand le serveur est arrêté
+// → serveur relancé → « Réessayer » ramène sur le site.
 // Captures d'écran : dossier SMOKE_OUT (défaut ./smoke).
 import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -10,6 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 const APK = process.env.SMOKE_APK ?? "android/app/build/outputs/apk/debug/app-debug.apk";
 const OUT = process.env.SMOKE_OUT ?? "smoke";
 const STOP_SERVER = process.env.SMOKE_STOP_SERVER; // commande qui arrête le site (étape hors ligne)
+const START_SERVER = process.env.SMOKE_START_SERVER; // commande qui relance le site (bouton « Réessayer »)
 const PKG = "com.zegroup.zeloyer";
 mkdirSync(OUT, { recursive: true });
 const SERVER = (process.env.ZE_LOYER_URL ?? "http://10.0.2.2:3000").replace(/\/$/, "");
@@ -228,7 +230,28 @@ async function main() {
     ws.close();
     await connectWebView();
     await waitFor("écran hors ligne", async () => (await page()).text.includes("Pas de connexion"), 60_000);
+    // Mise en forme intégrée à la page : fond vert ZE LOYER et vrai bouton (pas du texte brut)
+    const style = await js(`(() => {
+      const b = document.getElementById("retry");
+      return { bg: getComputedStyle(document.body).backgroundColor, btn: b ? b.getBoundingClientRect().height : 0 };
+    })()`);
+    if (style.bg !== "rgb(15, 95, 62)" || style.btn < 40) throw new Error(`Écran hors ligne sans sa mise en forme (${JSON.stringify(style)})`);
     shot("hors-ligne");
+
+    if (START_SERVER) {
+      log("Serveur relancé → « Réessayer »");
+      execSync(START_SERVER, { stdio: "inherit", shell: "/bin/bash" });
+      await js("document.getElementById('retry').click(); true", { userGesture: true }).catch(() => undefined);
+      await sleep(3000);
+      ws.close();
+      await connectWebView();
+      await waitFor("retour sur le site après « Réessayer »", async () => {
+        const x = await page();
+        return x.href.startsWith(SERVER) && /Se connecter|Bonjour Kossi/.test(x.text) ? x : null;
+      });
+      await assertPageVisible("site après Réessayer");
+      shot("reessayer");
+    }
   }
 
   log("✅ Parcours Android réussi");

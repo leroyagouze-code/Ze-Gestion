@@ -1,6 +1,6 @@
-// Écrit l'adresse du serveur ZE LOYER dans www/config.json (lue par capacitor.config.ts et la page hors ligne).
+// Écrit l'adresse du serveur ZE LOYER dans www/config.json (lue par capacitor.config.ts) et génère les pages locales de www/.
 // Usage : ZE_LOYER_URL=https://app.zeloyer.tg npm run configure
-import { writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const raw = (process.env.ZE_LOYER_URL ?? "").trim().replace(/\/+$/, "");
 let serverUrl = null;
@@ -21,5 +21,16 @@ if (raw) {
 }
 const allowHttp = !!serverUrl && serverUrl.startsWith("http:");
 if (allowHttp) console.warn("⚠ Connexion NON sécurisée (http) autorisée : version de TEST uniquement, ne pas distribuer.");
-writeFileSync(new URL("../www/config.json", import.meta.url), JSON.stringify({ serverUrl, allowHttp }, null, 2) + "\n");
+// www/ est entièrement généré : pages locales (écran « pas encore configurée » et écran « Pas de connexion »)
+// avec le style et l'adresse du serveur intégrés (aucun fichier annexe à charger hors connexion).
+const www = new URL("../www/", import.meta.url);
+mkdirSync(www, { recursive: true });
+const css = readFileSync(new URL("./templates/app.css", import.meta.url), "utf8");
+for (const page of ["index.html", "offline.html"]) {
+  const html = readFileSync(new URL(`./templates/${page}`, import.meta.url), "utf8")
+    .replace("/*CSS*/", css)
+    .replace("__SERVER_URL__", serverUrl ?? "");
+  writeFileSync(new URL(page, www), html);
+}
+writeFileSync(new URL("config.json", www), JSON.stringify({ serverUrl, allowHttp }, null, 2) + "\n");
 console.log(serverUrl ? `Serveur ZE LOYER : ${serverUrl}` : "⚠ Aucune adresse de serveur (ZE_LOYER_URL) : l'application affichera « pas encore configurée ».");

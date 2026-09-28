@@ -85,10 +85,14 @@ Icônes et écran d'ouverture : images sources dans `assets/`, puis `npm run ico
 
 ## Test automatique sur émulateur
 
-À chaque modification de l'application Android, GitHub lance un vrai émulateur Android 11 (job « emulator » du workflow
+À chaque modification de l'application Android, GitHub lance un vrai émulateur Android 14 (job « emulator » du workflow
 **ZE LOYER Android**) avec un site ZE LOYER de démonstration, puis le script `scripts/emulator-smoke.mjs` vérifie :
 ouverture sur la connexion → connexion de Kossi (locataire démo) → son espace → ses quittances → **téléchargement du
-PDF dans « Téléchargements »** → **bouton retour Android** → **écran « Pas de connexion »** quand le serveur est coupé.
+PDF dans « Téléchargements »** → **bouton retour Android** → **écran « Pas de connexion »** (mis en forme) quand le
+serveur est coupé → serveur relancé → **« Réessayer »** ramène sur le site.
+
+Les pages locales de l'application (`www/`, générées par `scripts/configure.mjs` à partir de `scripts/templates/`)
+contiennent leur mise en forme et l'adresse du serveur : elles s'affichent correctement même sans connexion.
 Les captures d'écran de chaque étape sont dans l'artefact **ZE-LOYER-Android-captures**.
 
 ## Plus tard

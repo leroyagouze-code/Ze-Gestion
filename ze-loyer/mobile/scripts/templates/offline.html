@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>ZE LOYER</title>
-  <link rel="stylesheet" href="app.css" />
+  <style>/*CSS*/</style>
 </head>
 <body>
   <div class="logo" aria-hidden="true">ZL</div>
@@ -13,13 +13,11 @@
   <button id="retry" type="button">Réessayer</button>
   <small>Vos données sont en sécurité.</small>
   <script>
-    document.getElementById("retry").addEventListener("click", async () => {
-      try {
-        const { serverUrl } = await (await fetch("config.json", { cache: "no-store" })).json();
-        location.href = serverUrl ? serverUrl + "/connexion" : "index.html";
-      } catch {
-        location.reload();
-      }
+    // Adresse du serveur inscrite à la construction de l'application (scripts/configure.mjs) :
+    // la page ne dépend d'aucun autre fichier, elle fonctionne même quand le serveur ne répond pas.
+    const SERVER = "__SERVER_URL__";
+    document.getElementById("retry").addEventListener("click", () => {
+      location.href = SERVER ? SERVER + "/connexion" : "index.html";
     });
   </script>
 </body>
