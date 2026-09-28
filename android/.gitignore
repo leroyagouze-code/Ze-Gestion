@@ -1,0 +1,10 @@
+build/nodejs-project/
+app/src/main/assets/app.zip
+app/src/main/assets/app.version
+app/src/main/jniLibs/
+app/build/
+.gradle/
+local.properties
+*.keystore
+!app/test-signing.p12
+*.jks
