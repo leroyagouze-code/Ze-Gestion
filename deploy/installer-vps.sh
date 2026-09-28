@@ -45,7 +45,10 @@ main() {
 
   if ! command -v docker >/dev/null; then
     say "Installation de Docker"
-    curl -fsSL https://get.docker.com | sh </dev/null >/dev/null
+    # Téléchargé dans un fichier : « curl | sh </dev/null » ferait lire à sh le vide au lieu du script
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sh /tmp/get-docker.sh </dev/null >/dev/null
+    rm -f /tmp/get-docker.sh
   fi
 
   say "Pare-feu (SSH, HTTP, HTTPS)"
