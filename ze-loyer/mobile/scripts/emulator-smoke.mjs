@@ -12,6 +12,15 @@ const OUT = process.env.SMOKE_OUT ?? "smoke";
 const STOP_SERVER = process.env.SMOKE_STOP_SERVER; // commande qui arrête le site (étape hors ligne)
 const PKG = "com.zegroup.zeloyer";
 mkdirSync(OUT, { recursive: true });
+const SERVER = (process.env.ZE_LOYER_URL ?? "http://10.0.2.2:3000").replace(/\/$/, "");
+
+// Échec par défaut : seul le parcours complet met le code de sortie à 0.
+process.exitCode = 1;
+// Chien de garde : une attente qui ne finit jamais devient un échec explicite (sinon Node s'arrête en silence).
+const watchdog = setTimeout(() => {
+  console.error("❌ Test bloqué plus de 12 minutes");
+  process.exit(1);
+}, 12 * 60_000);
 
 const adb = (...args) => execFileSync("adb", args, { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }).trim();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -90,32 +99,49 @@ let ws;
 let seq = 0;
 const pending = new Map();
 async function connectWebView() {
-  const socket = await waitFor("socket DevTools de la WebView", () => {
-    const m = /@(webview_devtools_remote_\d+)/.exec(adb("shell", "cat", "/proc/net/unix"));
-    return m?.[1];
+  const socket = await waitFor("socket DevTools de la WebView ZE LOYER", () => {
+    const pid = adb("shell", "pidof", PKG).split(/\s+/)[0];
+    if (!pid) return null;
+    const name = `webview_devtools_remote_${pid}`;
+    return adb("shell", "cat", "/proc/net/unix").includes(`@${name}`) ? name : null;
   });
   adb("forward", "tcp:9222", `localabstract:${socket}`);
-  const page = await waitFor("page ZE LOYER dans la WebView", async () => {
-    const list = await (await fetch("http://127.0.0.1:9222/json")).json();
-    return list.find((t) => t.type === "page" && t.webSocketDebuggerUrl);
+  const target = await waitFor("page ZE LOYER dans la WebView", async () => {
+    const list = await (await fetch("http://127.0.0.1:9222/json", { signal: AbortSignal.timeout(5000) })).json();
+    return list.find((t) => t.type === "page" && t.webSocketDebuggerUrl && (t.url.startsWith(SERVER) || t.url.includes("offline.html"))) ?? null;
   });
-  ws = new WebSocket(page.webSocketDebuggerUrl);
+  log(`WebView : ${target.url}`);
+  ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((res, rej) => {
-    ws.onopen = res;
-    ws.onerror = rej;
+    const t = setTimeout(() => rej(new Error("connexion DevTools : délai dépassé")), 15_000);
+    ws.onopen = () => (clearTimeout(t), res());
+    ws.onerror = () => (clearTimeout(t), rej(new Error("connexion DevTools refusée")));
   });
+  ws.onclose = () => {
+    for (const [, p] of pending) p.reject(new Error("connexion DevTools fermée"));
+    pending.clear();
+  };
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.id && pending.has(msg.id)) {
-      pending.get(msg.id)(msg);
+      pending.get(msg.id).resolve(msg);
       pending.delete(msg.id);
     }
   };
 }
-function cdp(method, params = {}) {
+function cdp(method, params = {}, timeoutMs = 20_000) {
   const id = ++seq;
-  ws.send(JSON.stringify({ id, method, params }));
-  return new Promise((res) => pending.set(id, res));
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`${method} : pas de réponse de la WebView`));
+    }, timeoutMs);
+    pending.set(id, {
+      resolve: (m) => (clearTimeout(t), resolve(m)),
+      reject: (e) => (clearTimeout(t), reject(e)),
+    });
+    ws.send(JSON.stringify({ id, method, params }));
+  });
 }
 async function js(expression, { userGesture = false } = {}) {
   // userGesture : se comporte comme un vrai toucher du doigt (sinon Android bloque l'ouverture d'un lien « nouvel onglet »)
@@ -204,6 +230,9 @@ async function main() {
   }
 
   log("✅ Parcours Android réussi");
+  clearTimeout(watchdog);
+  ws?.close();
+  process.exitCode = 0;
 }
 
 main().catch((e) => {
