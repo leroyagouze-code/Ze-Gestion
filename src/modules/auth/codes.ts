@@ -52,7 +52,7 @@ export async function issueCode(userId: string, purpose: CodePurpose) {
       .where(and(eq(emailCodes.userId, userId), eq(emailCodes.purpose, purpose), isNull(emailCodes.consumedAt)));
     const [row] = await tx
       .insert(emailCodes)
-      .values({ userId, purpose, codeHash: hashCode(userId, purpose, code), expiresAt: new Date(now.getTime() + CODE_TTL_MS) })
+      .values({ userId, purpose, codeHash: hashCode(userId, purpose, code), createdAt: now, expiresAt: new Date(now.getTime() + CODE_TTL_MS) })
       .returning({ id: emailCodes.id });
     return row.id;
   });
