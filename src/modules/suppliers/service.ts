@@ -65,7 +65,8 @@ export async function getSupplier(ctx: AppContext, id: string) {
       .select({ id: stockMovements.id, createdAt: stockMovements.createdAt, quantity: stockMovements.quantity, unitCost: stockMovements.unitCost, productName: products.name, reason: stockMovements.reason })
       .from(stockMovements)
       .innerJoin(products, eq(products.id, stockMovements.productId))
-      .where(sql`${products.supplierId} = ${id} and ${stockMovements.type} in ('in', 'purchase_receipt')`)
+      // Fournisseur de la réception s'il est indiqué, sinon fournisseur habituel du produit
+      .where(sql`coalesce(${stockMovements.supplierId}, ${products.supplierId}) = ${id} and ${stockMovements.type} in ('in', 'purchase_receipt')`)
       .orderBy(desc(stockMovements.createdAt))
       .limit(50);
     return { supplier: s, products: supplied, receipts };

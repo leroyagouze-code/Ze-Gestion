@@ -1,6 +1,6 @@
 {
-  "id": "fc14c472-b93e-4f9e-aa95-a7d4afb82b41",
-  "prevId": "4ed5ca74-1af0-457f-a728-1dbe078bbba9",
+  "id": "3306f3e1-4491-4ce6-a620-3d04c074bb70",
+  "prevId": "d8612ccd-3aa8-4b97-9088-663411155072",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -816,112 +816,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.email_codes": {
-      "name": "email_codes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code_hash": {
-          "name": "code_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "consumed_at": {
-          "name": "consumed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "email_codes_user_purpose_idx": {
-          "name": "email_codes_user_purpose_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "purpose",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "email_codes_user_id_users_id_fk": {
-          "name": "email_codes_user_id_users_id_fk",
-          "tableFrom": "email_codes",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.expenses": {
       "name": "expenses",
       "schema": "",
@@ -1681,31 +1575,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "promo_code_id": {
-          "name": "promo_code_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "promo_code": {
-          "name": "promo_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "list_amount": {
-          "name": "list_amount",
-          "type": "numeric(18, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "discount_amount": {
-          "name": "discount_amount",
-          "type": "numeric(18, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "checked_at": {
           "name": "checked_at",
           "type": "timestamp with time zone",
@@ -1777,19 +1646,6 @@
           "tableTo": "license_issues",
           "columnsFrom": [
             "license_issue_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "license_orders_promo_code_id_platform_promo_codes_id_fk": {
-          "name": "license_orders_promo_code_id_platform_promo_codes_id_fk",
-          "tableFrom": "license_orders",
-          "tableTo": "platform_promo_codes",
-          "columnsFrom": [
-            "promo_code_id"
           ],
           "columnsTo": [
             "id"
@@ -2441,151 +2297,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.platform_promo_codes": {
-      "name": "platform_promo_codes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "numeric(18, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'all'"
-        },
-        "plans": {
-          "name": "plans",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::text[]"
-        },
-        "starts_on": {
-          "name": "starts_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ends_on": {
-          "name": "ends_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "max_uses": {
-          "name": "max_uses",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "used_count": {
-          "name": "used_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "platform_promo_codes_code_uq": {
-          "name": "platform_promo_codes_code_uq",
-          "columns": [
-            {
-              "expression": "upper(\"code\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "platform_promo_codes_created_by_users_id_fk": {
-          "name": "platform_promo_codes_created_by_users_id_fk",
-          "tableFrom": "platform_promo_codes",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "platform_promo_codes_uses_ck": {
-          "name": "platform_promo_codes_uses_ck",
-          "value": "\"platform_promo_codes\".\"used_count\" >= 0 and (\"platform_promo_codes\".\"max_uses\" is null or \"platform_promo_codes\".\"used_count\" <= \"platform_promo_codes\".\"max_uses\")"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.products": {
       "name": "products",
       "schema": "",
@@ -2876,149 +2587,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.promo_codes": {
-      "name": "promo_codes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "company_id": {
-          "name": "company_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "numeric(18, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "min_purchase": {
-          "name": "min_purchase",
-          "type": "numeric(18, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "starts_on": {
-          "name": "starts_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ends_on": {
-          "name": "ends_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "max_uses": {
-          "name": "max_uses",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "used_count": {
-          "name": "used_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "promo_codes_company_code_uq": {
-          "name": "promo_codes_company_code_uq",
-          "columns": [
-            {
-              "expression": "company_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "upper(\"code\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "promo_codes_company_id_companies_id_fk": {
-          "name": "promo_codes_company_id_companies_id_fk",
-          "tableFrom": "promo_codes",
-          "tableTo": "companies",
-          "columnsFrom": [
-            "company_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "promo_codes_uses_ck": {
-          "name": "promo_codes_uses_ck",
-          "value": "\"promo_codes\".\"used_count\" >= 0 and (\"promo_codes\".\"max_uses\" is null or \"promo_codes\".\"used_count\" <= \"promo_codes\".\"max_uses\")"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.roles": {
@@ -3386,25 +2954,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "promo_code_id": {
-          "name": "promo_code_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "promo_code": {
-          "name": "promo_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "promo_discount": {
-          "name": "promo_discount",
-          "type": "numeric(18, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3524,19 +3073,6 @@
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "sales_promo_code_id_promo_codes_id_fk": {
-          "name": "sales_promo_code_id_promo_codes_id_fk",
-          "tableFrom": "sales",
-          "tableTo": "promo_codes",
-          "columnsFrom": [
-            "promo_code_id"
           ],
           "columnsTo": [
             "id"
@@ -4132,25 +3668,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "promo_code_id": {
-          "name": "promo_code_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "promo_code": {
-          "name": "promo_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "discount_amount": {
-          "name": "discount_amount",
-          "type": "numeric(18, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "recorded_by": {
           "name": "recorded_by",
           "type": "uuid",
@@ -4213,19 +3730,6 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "subscription_payments_promo_code_id_platform_promo_codes_id_fk": {
-          "name": "subscription_payments_promo_code_id_platform_promo_codes_id_fk",
-          "tableFrom": "subscription_payments",
-          "tableTo": "platform_promo_codes",
-          "columnsFrom": [
-            "promo_code_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "subscription_payments_recorded_by_users_id_fk": {
@@ -4596,12 +4100,6 @@
         },
         "password_changed_at": {
           "name": "password_changed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email_verified_at": {
-          "name": "email_verified_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

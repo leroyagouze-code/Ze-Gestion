@@ -1,11 +1,12 @@
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
-import { num } from "@/lib/zod";
+import { optNum } from "@/lib/zod";
 import { z } from "zod";
 import { db, type Tx } from "@/db";
 import { auditLogs, companies, plans, subscriptionPayments, subscriptions, users } from "@/db/schema";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { contains } from "@/lib/search";
 import { computeState } from "@/modules/billing/access";
+import { quotePlatformPromo, reservePlatformPromo } from "@/modules/billing/platform-promos";
 
 /**
  * Espace super admin : ne lit que les tables plateforme (entreprises, utilisateurs, formules,
@@ -164,7 +165,9 @@ export const PAYMENT_METHODS = { tmoney: "TMoney", flooz: "Flooz", cash: "Espèc
 export const paymentSchema = z.object({
   planId: z.string().uuid(),
   months: z.coerce.number().int().min(1).max(36),
-  amount: num().pipe(z.number().max(100_000_000)),
+  /** Montant reçu ; calculé par le serveur quand un code promo est saisi (tarif mensuel × mois − réduction). */
+  amount: optNum.pipe(z.number().max(100_000_000).nullable().optional()),
+  promoCode: z.string().trim().max(40).optional().transform((v) => v || null),
   method: z.enum(Object.keys(PAYMENT_METHODS) as [keyof typeof PAYMENT_METHODS, ...(keyof typeof PAYMENT_METHODS)[]]),
   reference: z.string().trim().max(100).optional().transform((v) => v || null),
 });
@@ -190,10 +193,23 @@ export async function recordSubscriptionPayment(admin: Admin, companyId: string,
     const running = sub.status === "active" && !sub.unlimited && sub.currentPeriodEnd && sub.currentPeriodEnd > now;
     const periodStart = running ? sub.currentPeriodEnd! : now;
     const periodEnd = addMonths(periodStart, input.months);
+    let amount = input.amount ?? null;
+    let promo: { id: string; code: string; discount: number } | null = null;
+    if (input.promoCode) {
+      // Prix calculé depuis le tarif de la formule, jamais depuis le montant saisi
+      const q = await quotePlatformPromo(input.promoCode, { target: "subscription", plan: plan.code, amount: plan.monthlyPrice * input.months }, tx);
+      await reservePlatformPromo(tx, q.promo.id);
+      promo = { id: q.promo.id, code: q.promo.code, discount: q.discount };
+      amount = q.amount;
+    }
+    if (amount === null) throw new BusinessError("Montant : saisissez le montant reçu");
     await tx.insert(subscriptionPayments).values({
       companyId,
       planId: plan.id,
-      amount: input.amount,
+      amount,
+      promoCodeId: promo?.id ?? null,
+      promoCode: promo?.code ?? null,
+      discountAmount: promo?.discount ?? 0,
       currency: plan.currency,
       method: input.method,
       reference: input.reference,
@@ -206,7 +222,7 @@ export async function recordSubscriptionPayment(admin: Admin, companyId: string,
       .update(subscriptions)
       .set({ planId: plan.id, status: "active", unlimited: false, currentPeriodEnd: periodEnd, updatedAt: now })
       .where(eq(subscriptions.id, sub.id));
-    await logAction(tx, admin, companyId, "platform.payment_recorded", { plan: plan.name, amount: input.amount, method: input.method, months: input.months, periodEnd });
+    await logAction(tx, admin, companyId, "platform.payment_recorded", { plan: plan.name, amount, method: input.method, months: input.months, periodEnd, ...(promo ? { promoCode: promo.code, discount: promo.discount } : {}) });
     return periodEnd;
   });
 }

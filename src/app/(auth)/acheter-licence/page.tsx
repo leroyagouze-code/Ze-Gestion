@@ -4,7 +4,7 @@ import { isDesktop } from "@/lib/license";
 import { LICENSE_DURATIONS } from "@/modules/billing/license";
 import { listPrices } from "@/modules/billing/license-orders";
 import { paymentMode } from "@/modules/billing/paygate";
-import { createOrderAction } from "./actions";
+import { createOrderAction, previewPromoAction } from "./actions";
 import { OrderForm } from "./order-form";
 
 export const metadata = { title: "Acheter une licence" };
@@ -41,7 +41,7 @@ export default async function BuyLicencePage({ searchParams }: { searchParams: P
         </p>
       )}
       {open ? (
-        <OrderForm action={createOrderAction} offers={offers} plans={plans} installId={code ?? ""} />
+        <OrderForm action={createOrderAction} previewAction={previewPromoAction} offers={offers} plans={plans} installId={code ?? ""} />
       ) : (
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">La vente en ligne n&apos;est pas encore ouverte. Contactez ZE GROUP pour recevoir votre code de licence.</p>
       )}

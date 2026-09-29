@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
-import { Camera, Minus, Plus, ScanLine, Trash2, X } from "lucide-react";
-import { computeTotals, formatMoney, formatQty, type TaxMode } from "@/lib/money";
-import { createSaleAction } from "./actions";
+import { Camera, Minus, Plus, ScanLine, Tag, Trash2, UserPlus, UserRound, X } from "lucide-react";
+import { computeTotals, formatMoney, formatQty, lineDiscount, round, type TaxMode } from "@/lib/money";
+import { promoDiscount, promoLabel } from "@/lib/promo";
+import type { PosCustomer } from "@/modules/customers/service";
+import { createPosCustomerAction, createSaleAction, lookupPromoAction, searchPosCustomersAction } from "./actions";
 
 type Product = {
   id: string;
@@ -21,6 +23,7 @@ type Line = { product: Product; quantity: number; discount: number };
 type Method = { id: string; label: string; type: string };
 /** auto : montant rempli par la caisse, qui suit le total tant que le caissier ne le modifie pas. */
 type Pay = { paymentMethodId: string; amount: string; reference: string; auto?: boolean };
+type Promo = { code: string; kind: string; value: number; minPurchase: number | null; description: string | null };
 
 const price = (p: Product) => (p.promoPrice != null && p.promoPrice > 0 ? p.promoPrice : p.salePrice);
 
@@ -29,7 +32,7 @@ export function Pos({
   decimals,
   taxMode = "line",
   paymentMethods,
-  customers,
+  canCreateCustomer,
   canDiscount,
   canInvoice,
 }: {
@@ -37,7 +40,7 @@ export function Pos({
   decimals: number;
   taxMode?: TaxMode;
   paymentMethods: Method[];
-  customers: { id: string; name: string; phone: string | null }[];
+  canCreateCustomer: boolean;
   canDiscount: boolean;
   canInvoice: boolean;
 }) {
@@ -45,7 +48,11 @@ export function Pos({
   const [results, setResults] = useState<Product[]>([]);
   const [cart, setCart] = useState<Line[]>([]);
   const [discount, setDiscount] = useState("");
-  const [customerId, setCustomerId] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [promo, setPromo] = useState<Promo | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [checkingPromo, startPromo] = useTransition();
+  const [customer, setCustomer] = useState<PosCustomer | null>(null);
   const [pays, setPays] = useState<Pay[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<null | { id: string; number: string; total: number; change: number; due: number; invoiceId: string | null }>(null);
@@ -87,16 +94,31 @@ export function Pos({
     } else if (!found.length) setError(`Aucun produit pour « ${term} »`);
   }
 
-  const totals = useMemo(
-    () =>
-      computeTotals(
-        cart.map((l) => ({ quantity: l.quantity, unitPrice: price(l.product), discount: l.discount, taxRate: l.product.taxRate })),
-        Number(discount.replace(",", ".")) || 0,
-        decimals,
-        taxMode,
-      ),
-    [cart, discount, decimals, taxMode],
+  const lineInputs = useMemo(
+    () => cart.map((l) => ({ quantity: l.quantity, unitPrice: price(l.product), discount: l.discount, taxRate: l.product.taxRate })),
+    [cart],
   );
+  // Aperçu de la réduction du code promo (le serveur la recalcule à l'encaissement), sur la base de la remise globale
+  const promoBase = round(lineInputs.reduce((s, l) => s + Math.max(l.quantity * l.unitPrice - lineDiscount(l), 0), 0), decimals);
+  const promoShort = promo?.minPurchase != null && promo.minPurchase > 0 && promoBase < promo.minPurchase;
+  const promoAmount = promo && !promoShort ? promoDiscount(promo, promoBase, decimals) : 0;
+  const totals = useMemo(
+    () => computeTotals(lineInputs, (Number(discount.replace(",", ".")) || 0) + promoAmount, decimals, taxMode),
+    [lineInputs, discount, promoAmount, decimals, taxMode],
+  );
+
+  function applyPromo() {
+    const code = promoInput.trim();
+    if (!code) return;
+    setPromoError(null);
+    startPromo(async () => {
+      const res = await lookupPromoAction(code);
+      if (res.ok) {
+        setPromo(res.promo);
+        setPromoInput("");
+      } else setPromoError(res.error);
+    });
+  }
 
   const tendered = pays.reduce((s, p) => s + (Number(p.amount.replace(/\s/g, "").replace(",", ".")) || 0), 0);
   const creditSelected = pays.some((p) => paymentMethods.find((mm) => mm.id === p.paymentMethodId)?.type === "credit");
@@ -121,7 +143,10 @@ export function Pos({
   function reset() {
     setCart([]);
     setDiscount("");
-    setCustomerId("");
+    setPromo(null);
+    setPromoInput("");
+    setPromoError(null);
+    setCustomer(null);
     setPays([]);
     setDone(null);
     setError(null);
@@ -140,8 +165,9 @@ export function Pos({
       const res = await createSaleAction(
         {
           items: cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, discount: l.discount })),
-          customerId: customerId || null,
+          customerId: customer?.id ?? null,
           discount: Number(discount.replace(",", ".")) || 0,
+          promoCode: promo?.code ?? null,
           payments,
         },
         withInvoice,
@@ -169,7 +195,7 @@ export function Pos({
                 <div className="truncate text-sm font-medium">{l.product.name}</div>
                 <div className="text-xs text-slate-500">{m(price(l.product))} / {l.product.unit}</div>
               </div>
-              <div className="text-right text-sm font-semibold">{m((taxMode === "total" ? totals.lines[i]?.net : totals.lines[i]?.lineTotal) ?? 0)}</div>
+              <div className="text-right text-sm font-semibold">{m(totals.lines[i]?.gross ?? 0)}</div>
             </div>
             <div className="mt-2 flex items-center gap-2">
               <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => (l.quantity <= 1 ? c.filter((_, j) => j !== i) : c.map((x, j) => (j === i ? { ...x, quantity: x.quantity - 1 } : x))))}><Minus size={16} /></button>
@@ -196,18 +222,53 @@ export function Pos({
         ))}
       </div>
       <div className="space-y-3 border-t border-slate-200 p-4">
-        <div className={clsx("grid gap-2", canDiscount ? "grid-cols-2" : "grid-cols-1")}>
-          <select className="input" value={customerId} onChange={(e) => setCustomerId(e.target.value)} aria-label="Client">
-            <option value="">Client comptoir</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ""}</option>
-            ))}
-          </select>
-          {canDiscount && <input className="input" placeholder="Remise globale" inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} />}
-        </div>
+        <CustomerPicker value={customer} onChange={setCustomer} canCreate={canCreateCustomer} money={m} />
+        {canDiscount && <input className="input" placeholder="Remise globale" inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} />}
+        {promo ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+            <span className="min-w-0">
+              <Tag size={14} className="mr-1 inline text-emerald-700" />
+              <b className="font-mono">{promo.code}</b> {promoLabel(promo, m)}
+              {promoShort && <span className="block text-xs text-amber-700">Achat minimum {m(promo.minPurchase!)} : réduction non appliquée</span>}
+            </span>
+            <span className="flex items-center gap-1">
+              {promoAmount > 0 && <span className="font-medium text-emerald-800">−{m(promoAmount)}</span>}
+              <button className="btn-ghost px-1" onClick={() => setPromo(null)} aria-label="Retirer le code promo"><X size={16} /></button>
+            </span>
+          </div>
+        ) : (
+          <div>
+            <div className="flex gap-2">
+              <input
+                className="input font-mono uppercase"
+                placeholder="Code promo"
+                value={promoInput}
+                autoComplete="off"
+                onChange={(e) => {
+                  setPromoInput(e.target.value);
+                  setPromoError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyPromo();
+                  }
+                }}
+                aria-label="Code promo"
+              />
+              <button className="btn-secondary whitespace-nowrap" disabled={!promoInput.trim() || checkingPromo} onClick={applyPromo}>
+                {checkingPromo ? "…" : "Appliquer"}
+              </button>
+            </div>
+            {promoError && <p className="mt-1 text-xs text-red-700">{promoError}</p>}
+          </div>
+        )}
         <div className="space-y-1 text-sm">
           <div className="flex justify-between text-slate-500"><span>Total HT</span><span>{m(totals.subtotal)}</span></div>
           <div className="flex justify-between text-slate-500"><span>TVA</span><span>{m(totals.taxTotal)}</span></div>
+          {totals.vat.length > 1 && totals.vat.map((v) => (
+            <div key={v.rate} className="flex justify-between text-xs text-slate-400"><span>dont {formatQty(v.rate)} % sur {m(v.base)}</span><span>{m(v.tax)}</span></div>
+          ))}
           {totals.discountTotal > 0 && <div className="flex justify-between text-slate-500"><span>Remises</span><span>−{m(totals.discountTotal)}</span></div>}
           <div className="flex justify-between text-xl font-bold"><span>Total</span><span>{m(totals.total)}</span></div>
         </div>
@@ -319,6 +380,158 @@ export function Pos({
               {done.invoiceId && <a className="btn-secondary" href={`/api/invoices/${done.invoiceId}/pdf`} target="_blank">Télécharger la facture</a>}
               <button className="btn-primary py-3" onClick={reset} autoFocus>Nouvelle vente</button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Client de la vente : recherche au fil de la frappe (nom ou téléphone) et création rapide
+ * (nom + téléphone) sans quitter la caisse. Vide = client comptoir.
+ */
+function CustomerPicker({
+  value,
+  onChange,
+  canCreate,
+  money,
+}: {
+  value: PosCustomer | null;
+  onChange: (c: PosCustomer | null) => void;
+  canCreate: boolean;
+  money: (v: number) => string;
+}) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<PosCustomer[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState<null | { name: string; phone: string }>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let stale = false;
+    setLoading(true);
+    const t = setTimeout(async () => {
+      const rows = await searchPosCustomersAction(q).catch(() => []);
+      if (!stale) {
+        setResults(rows);
+        setLoading(false);
+      }
+    }, q ? 200 : 0);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
+  }, [q, open]);
+
+  function pick(c: PosCustomer | null) {
+    onChange(c);
+    setQ("");
+    setOpen(false);
+    setForm(null);
+    setError(null);
+  }
+
+  function startCreate() {
+    const term = q.trim();
+    const looksLikePhone = /^[+\d\s().-]+$/.test(term) && /\d{3}/.test(term);
+    setForm(looksLikePhone ? { name: "", phone: term } : { name: term, phone: "" });
+    setOpen(false);
+    setError(null);
+  }
+
+  function save() {
+    if (!form) return;
+    setError(null);
+    startSaving(async () => {
+      const res = await createPosCustomerAction(form);
+      if (res.ok) pick(res.customer);
+      else setError(res.error);
+    });
+  }
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-brand-500 bg-brand-50 px-3 py-2">
+        <UserRound size={18} className="shrink-0 text-brand-700" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-brand-800">{value.name}</div>
+          <div className="truncate text-xs text-slate-500">
+            {value.phone ?? "Sans téléphone"}
+            {value.balanceDue > 0 && <span className="text-amber-700"> · Doit {money(value.balanceDue)}</span>}
+          </div>
+        </div>
+        <button type="button" className="btn-ghost h-8 w-8 p-0" onClick={() => pick(null)} aria-label="Retirer le client"><X size={16} /></button>
+      </div>
+    );
+  }
+
+  if (form) {
+    return (
+      <form
+        className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <div className="text-sm font-medium">Nouveau client</div>
+        <input className="input" placeholder="Nom *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus={!form.name} required maxLength={200} aria-label="Nom du client" />
+        <input className="input" placeholder="Téléphone *" type="tel" inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} autoFocus={!!form.name} required maxLength={40} aria-label="Téléphone du client" />
+        {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" className="btn-secondary" onClick={() => { setForm(null); setError(null); }} disabled={saving}>Annuler</button>
+          <button type="submit" className="btn-primary" disabled={saving || !form.name.trim() || !form.phone.trim()}>{saving ? "…" : "Enregistrer"}</button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div>
+      <div className="relative">
+        <UserRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+        <input
+          ref={inputRef}
+          className="input pl-9"
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") { setOpen(false); inputRef.current?.blur(); }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (results[0]) pick(results[0]);
+            }
+          }}
+          placeholder="Client comptoir · rechercher nom ou téléphone"
+          aria-label="Client"
+          autoComplete="off"
+        />
+      </div>
+      {open && (
+        <div className="mt-1 max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+          {results.map((c) => (
+            <button key={c.id} type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => pick(c)}>
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{c.name}</span>
+                {c.phone && <span className="block truncate text-xs text-slate-500">{c.phone}</span>}
+              </span>
+              {c.balanceDue > 0 && <span className="shrink-0 text-xs text-amber-700">Doit {money(c.balanceDue)}</span>}
+            </button>
+          ))}
+          {!loading && results.length === 0 && <p className="px-3 py-2 text-sm text-slate-500">{q.trim() ? "Aucun client trouvé." : "Aucun client enregistré."}</p>}
+          <div className="flex border-t border-slate-100">
+            {canCreate && (
+              <button type="button" className="flex flex-1 items-center gap-2 px-3 py-2 text-left text-sm font-medium text-brand-700 hover:bg-slate-50" onClick={startCreate}>
+                <UserPlus size={16} /> Nouveau client{q.trim() ? ` « ${q.trim()} »` : ""}
+              </button>
+            )}
+            <button type="button" className="ml-auto px-3 py-2 text-sm text-slate-500 hover:bg-slate-50" onClick={() => { setOpen(false); setQ(""); }}>Fermer</button>
           </div>
         </div>
       )}

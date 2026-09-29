@@ -19,7 +19,7 @@ import { assertCollectMethod, assertOwned } from "@/db/owned";
 import { audit } from "@/lib/audit";
 import { newToken, getCompany } from "@/lib/auth/session";
 import { BusinessError, NotFoundError } from "@/lib/errors";
-import { computeTotals, currencyDecimals, isTaxMode, round } from "@/lib/money";
+import { computeTotals, currencyDecimals, isTaxMode, lineDiscount, round } from "@/lib/money";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
 import { nextDocumentNumber } from "@/modules/settings/sequences";
@@ -181,7 +181,7 @@ export async function createManualInvoiceInTx(tx: Tx, ctx: AppContext, input: z.
         description: i.description,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
-        discount: i.discount,
+        discount: lineDiscount(i),
         taxRate: i.taxRate,
         taxAmount: totals.lines[idx].taxAmount,
         lineTotal: totals.lines[idx].lineTotal,

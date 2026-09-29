@@ -6,7 +6,7 @@ import { Badge, Card, Field, PageHeader, SelectField } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { NotFoundError } from "@/lib/errors";
-import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis, shownLineTotal, vatDetail } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { INVOICE_STATUS } from "@/modules/invoices/labels";
 import { getInvoice } from "@/modules/invoices/service";
@@ -66,7 +66,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                     <td className="text-right">{formatQty(it.quantity)}</td>
                     <td className="text-right">{m(it.unitPrice)}</td>
                     <td className="text-right">{formatQty(it.taxRate)} %</td>
-                    <td className="text-right">{m(shownLineTotal(it, inv.taxMode))}</td>
+                    <td className="text-right">{m(shownLineTotal(it))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -75,6 +75,9 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           <div className="ml-auto mt-4 max-w-xs space-y-1 text-sm">
             <div className="flex justify-between"><span>Total HT</span><span>{m(inv.subtotal)}</span></div>
             <div className="flex justify-between"><span>TVA</span><span>{m(inv.taxTotal)}</span></div>
+            {vatDetail(items, inv, ctx.company.currency).map((v) => (
+              <div key={v.rate} className="flex justify-between text-slate-500"><span>dont {formatQty(v.rate)} % sur {m(v.base)}</span><span>{m(v.tax)}</span></div>
+            ))}
             <div className="flex justify-between text-base font-semibold"><span>Total TTC</span><span>{m(inv.total)}</span></div>
             <div className="flex justify-between text-slate-500"><span>Payé</span><span>{m(inv.paidAmount)}</span></div>
             {open && <div className="flex justify-between font-medium text-amber-700"><span>Reste</span><span>{m(inv.total - inv.paidAmount)}</span></div>}

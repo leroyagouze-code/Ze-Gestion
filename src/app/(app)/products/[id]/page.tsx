@@ -5,10 +5,10 @@ import { Badge, Card, PageHeader } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { NotFoundError } from "@/lib/errors";
-import { formatQty } from "@/lib/money";
+import { formatMoney, formatQty } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { getProduct, productFormOptions } from "@/modules/products/service";
-import { listMovements } from "@/modules/stock/service";
+import { listMovements, receiptFormOptions } from "@/modules/stock/service";
 import { MOVEMENT_LABELS } from "@/modules/stock/labels";
 import { deleteProductAction, updateProductAction } from "../actions";
 import { ProductForm } from "../product-form";
@@ -23,9 +23,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   });
   const canEdit = can(ctx.permissions, "products.edit");
   const canStock = can(ctx.permissions, "stock.view");
-  const [options, movements] = await Promise.all([
+  const canAdjust = can(ctx.permissions, "stock.adjust");
+  const canCost = can(ctx.permissions, "products.cost");
+  const [options, movements, receiptSuppliers] = await Promise.all([
     canEdit ? productFormOptions(ctx) : null,
     canStock ? listMovements(ctx, { productId: id }) : null,
+    canAdjust ? receiptFormOptions(ctx) : null,
   ]);
   const p = data.product;
   return (
@@ -68,9 +71,9 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           )}
         </div>
         <div className="space-y-4">
-          {can(ctx.permissions, "stock.adjust") && (
+          {canAdjust && (
             <Card title="Mouvement de stock">
-              <MovementForm productId={id} />
+              <MovementForm productId={id} suppliers={receiptSuppliers ?? []} canCost={canCost} currentCost={canCost ? p.purchasePrice : undefined} />
             </Card>
           )}
           {movements && (
@@ -86,6 +89,11 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                         <div className="text-xs text-slate-500">
                           {formatDate(mv.createdAt, true)} · {mv.userName ?? "—"} {mv.reason && `· ${mv.reason}`}
                         </div>
+                        {(mv.supplierName || mv.unitCost != null) && (
+                          <div className="text-xs text-slate-500">
+                            {[mv.supplierName, mv.unitCost != null && `${formatMoney(mv.unitCost, ctx.company.currency)} / u`].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <div className={mv.quantity >= 0 ? "text-emerald-700" : "text-red-600"}>
