@@ -2,14 +2,15 @@ import { and, desc, eq, lte, sql, isNotNull } from "drizzle-orm";
 import { contains } from "@/lib/search";
 import { z } from "zod";
 import type { Tx } from "@/db";
-import { products, stockLevels, stockMovements, stores, users } from "@/db/schema";
+import { products, stockLevels, stockMovements, stores, suppliers, users } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import { assertOwned } from "@/db/owned";
 import { audit } from "@/lib/audit";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
-import { num, optText } from "@/lib/zod";
-import { ctxAssert, type AppContext } from "@/modules/auth/context";
+import { currencyDecimals, round } from "@/lib/money";
+import { num, optNum, optText, optUuid } from "@/lib/zod";
+import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
 
 type MovementType = (typeof stockMovements.$inferInsert)["type"];
 
@@ -27,6 +28,7 @@ export async function applyMovement(
     quantity: number;
     reason?: string | null;
     unitCost?: number | null;
+    supplierId?: string | null;
     referenceType?: string;
     referenceId?: string;
   },
@@ -53,6 +55,7 @@ export async function applyMovement(
     quantity: m.quantity,
     quantityAfter: after,
     unitCost: m.unitCost ?? null,
+    supplierId: m.supplierId ?? null,
     reason: m.reason ?? null,
     referenceType: m.referenceType,
     referenceId: m.referenceId,
@@ -68,8 +71,26 @@ export const movementSchema = z.object({
   // in/out : quantité positive ; adjustment : écart signé ; inventory : quantité comptée
   quantity: num({ min: -1e9 }),
   reason: optText(300),
-  unitCost: num().optional(),
+  // Entrée uniquement : prix d'achat unitaire et fournisseur de la réception
+  unitCost: optNum,
+  supplierId: optUuid.optional(),
 });
+
+/**
+ * Coût moyen pondéré (CMP) après une entrée : le stock existant garde son coût,
+ * la quantité reçue arrive à son prix d'achat. Un stock nul ou négatif ne pèse rien.
+ */
+export function weightedAverageCost(stockBefore: number, oldCost: number, receivedQty: number, unitCost: number, decimals = 2) {
+  const base = Math.max(stockBefore, 0);
+  if (base + receivedQty <= 0) return round(unitCost, decimals);
+  return round((base * oldCost + receivedQty * unitCost) / (base + receivedQty), decimals);
+}
+
+/** Fournisseurs proposés dans le formulaire d'entrée de stock. */
+export async function receiptFormOptions(ctx: AppContext) {
+  ctxAssert(ctx, "stock.adjust");
+  return withTenant(ctx, (tx) => tx.select({ id: suppliers.id, name: suppliers.name }).from(suppliers).orderBy(suppliers.name).limit(500));
+}
 
 export async function recordManualMovement(ctx: AppContext, raw: z.input<typeof movementSchema>) {
   ctxAssert(ctx, "stock.adjust");
@@ -77,7 +98,20 @@ export async function recordManualMovement(ctx: AppContext, raw: z.input<typeof 
   const storeId = input.storeId ?? ctx.storeId;
   return withTenant(ctx, async (tx) => {
     await assertOwned(tx, stores, storeId, "Boutique");
-    const [p] = await tx.select({ id: products.id, name: products.name }).from(products).where(eq(products.id, input.productId));
+    const isIn = input.kind === "in";
+    if (!isIn && (input.supplierId || input.unitCost != null)) {
+      throw new BusinessError("Le prix d'achat et le fournisseur ne s'indiquent que sur une entrée de stock");
+    }
+    // Le prix d'achat n'est pris en compte que pour ceux qui ont le droit de voir les coûts
+    const unitCost = isIn && ctxCan(ctx, "products.cost") ? (input.unitCost ?? null) : null;
+    const supplierId = isIn ? (input.supplierId ?? null) : null;
+    await assertOwned(tx, suppliers, supplierId, "Fournisseur");
+    // Verrou sur le produit : deux entrées simultanées ne doivent pas calculer le CMP sur le même coût de départ
+    const [p] = await tx
+      .select({ id: products.id, name: products.name, purchasePrice: products.purchasePrice, supplierId: products.supplierId })
+      .from(products)
+      .where(eq(products.id, input.productId))
+      .for("update");
     if (!p) throw new NotFoundError("Produit");
     let delta: number;
     if (input.kind === "in") delta = Math.abs(input.quantity);
@@ -97,10 +131,27 @@ export async function recordManualMovement(ctx: AppContext, raw: z.input<typeof 
       type: input.kind,
       quantity: delta,
       reason: input.reason,
-      unitCost: input.unitCost ?? null,
+      unitCost,
+      supplierId,
     });
     if (after < 0 && delta < 0 && !ctx.company.allowNegativeStock) {
       throw new BusinessError(`Stock insuffisant : ${Math.round((after - delta) * 1000) / 1000} disponible(s)`);
+    }
+    let newCost: number | undefined;
+    if (isIn && (unitCost != null || (supplierId && !p.supplierId))) {
+      const patch: Partial<typeof products.$inferInsert> = { updatedAt: new Date() };
+      if (unitCost != null) {
+        // Stock toutes boutiques avant l'entrée : le coût d'achat du produit est unique pour l'entreprise
+        const [{ total }] = await tx
+          .select({ total: sql<number>`coalesce(sum(${stockLevels.quantity}), 0)::float8` })
+          .from(stockLevels)
+          .where(eq(stockLevels.productId, p.id));
+        newCost = weightedAverageCost(total - delta, p.purchasePrice, delta, unitCost, currencyDecimals(ctx.company.currency));
+        patch.purchasePrice = newCost;
+      }
+      // Premier fournisseur connu : il devient le fournisseur habituel du produit
+      if (supplierId && !p.supplierId) patch.supplierId = supplierId;
+      await tx.update(products).set(patch).where(eq(products.id, p.id));
     }
     await audit(tx, {
       companyId: ctx.companyId,
@@ -108,7 +159,15 @@ export async function recordManualMovement(ctx: AppContext, raw: z.input<typeof 
       action: "stock.movement",
       entityType: "product",
       entityId: p.id,
-      metadata: { name: p.name, kind: input.kind, delta, after, reason: input.reason },
+      metadata: {
+        name: p.name,
+        kind: input.kind,
+        delta,
+        after,
+        reason: input.reason,
+        ...(unitCost != null && { unitCost, costBefore: p.purchasePrice, costAfter: newCost }),
+        ...(supplierId && { supplierId }),
+      },
       ip: ctx.ip,
     });
     return after;
@@ -169,6 +228,9 @@ export async function listMovements(ctx: AppContext, opts: { productId?: string;
         quantity: stockMovements.quantity,
         quantityAfter: stockMovements.quantityAfter,
         reason: stockMovements.reason,
+        unitCost: stockMovements.unitCost,
+        supplierId: suppliers.id,
+        supplierName: suppliers.name,
         productId: products.id,
         productName: products.name,
         storeName: stores.name,
@@ -178,12 +240,14 @@ export async function listMovements(ctx: AppContext, opts: { productId?: string;
       .innerJoin(products, eq(products.id, stockMovements.productId))
       .innerJoin(stores, eq(stores.id, stockMovements.storeId))
       .leftJoin(users, eq(users.id, stockMovements.userId))
+      .leftJoin(suppliers, eq(suppliers.id, stockMovements.supplierId))
       .where(where)
       .orderBy(desc(stockMovements.createdAt))
       .limit(limit)
       .offset(offset);
     const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(stockMovements).where(where);
-    return { rows, total: count, page, pageSize: limit };
+    const canCost = ctxCan(ctx, "products.cost");
+    return { rows: rows.map((r) => ({ ...r, unitCost: canCost ? r.unitCost : null })), total: count, page, pageSize: limit };
   });
 }
 

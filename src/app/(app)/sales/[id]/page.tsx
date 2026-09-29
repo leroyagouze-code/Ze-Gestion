@@ -5,7 +5,7 @@ import { Badge, Card, Field, PageHeader } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { NotFoundError } from "@/lib/errors";
-import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis, shownLineTotal, vatDetail } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { getSale } from "@/modules/sales/service";
 import { cancelSaleAction, invoiceFromSaleAction } from "../actions";
@@ -24,7 +24,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
     <>
       <PageHeader
         title={`Vente ${s.number}`}
-        subtitle={`${formatDate(s.createdAt, true)} · ${d.storeName} · ${d.userName ?? "—"}`}
+        subtitle={`${formatDate(s.createdAt, true)} · ${d.storeName} · ${d.userName ?? "—"}${d.registerName ? ` · ${d.registerName}` : ""}`}
         actions={
           <>
             {s.status === "cancelled" ? <Badge tone="red">Annulée</Badge> : s.dueAmount > 0 ? <Badge tone="amber">Crédit</Badge> : <Badge tone="green">Payée</Badge>}
@@ -62,7 +62,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
                     <td className="text-right">{formatQty(it.quantity)}</td>
                     <td className="text-right">{m(it.unitPrice)}</td>
                     <td className="text-right">{it.discount ? m(it.discount) : "—"}</td>
-                    <td className="text-right">{m(shownLineTotal(it, s.taxMode))}</td>
+                    <td className="text-right">{m(shownLineTotal(it))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -71,7 +71,11 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
           <div className="ml-auto mt-4 max-w-xs space-y-1 text-sm">
             <div className="flex justify-between"><span>Total HT</span><span>{m(s.subtotal)}</span></div>
             <div className="flex justify-between"><span>TVA</span><span>{m(s.taxTotal)}</span></div>
+            {vatDetail(d.items, s, ctx.company.currency).map((v) => (
+              <div key={v.rate} className="flex justify-between text-slate-500"><span>dont {formatQty(v.rate)} % sur {m(v.base)}</span><span>{m(v.tax)}</span></div>
+            ))}
             {s.discountTotal > 0 && <div className="flex justify-between"><span>Remises</span><span>−{m(s.discountTotal)}</span></div>}
+            {s.promoCode && <div className="flex justify-between text-emerald-700"><span>dont code promo <span className="font-mono">{s.promoCode}</span></span><span>−{m(s.promoDiscount)}</span></div>}
             <div className="flex justify-between text-base font-semibold"><span>Total TTC</span><span>{m(s.total)}</span></div>
             {showProfit && <div className="flex justify-between text-slate-500"><span>Marge brute</span><span>{m(s.subtotal - s.costTotal)}</span></div>}
           </div>

@@ -6,6 +6,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import {
   BarChart3,
+  Calculator,
   Boxes,
   FileSignature,
   FileText,
@@ -23,6 +24,7 @@ import {
   Wallet,
   X,
   Shield,
+  Tag,
 } from "lucide-react";
 import { Logo } from "./logo";
 
@@ -30,6 +32,7 @@ const ICONS = {
   dashboard: LayoutDashboard,
   pos: ShoppingCart,
   sales: Receipt,
+  registers: Calculator,
   invoices: FileText,
   quotes: FileSignature,
   products: Package,
@@ -43,6 +46,7 @@ const ICONS = {
   audit: History,
   admin: Shield,
   licence: KeyRound,
+  promos: Tag,
 };
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };

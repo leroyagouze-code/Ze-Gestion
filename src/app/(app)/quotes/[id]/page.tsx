@@ -73,7 +73,7 @@ export default async function QuotePage({ params, searchParams }: { params: Prom
                     <td className="text-right">{formatQty(it.quantity)}</td>
                     <td className="text-right">{m(it.unitPrice)}</td>
                     <td className="text-right">{formatQty(it.taxRate)} %</td>
-                    <td className="text-right">{m(shownLineTotal(it, q.taxMode))}</td>
+                    <td className="text-right">{m(shownLineTotal(it))}</td>
                   </tr>
                 ))}
               </tbody>

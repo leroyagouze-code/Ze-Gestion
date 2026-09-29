@@ -46,7 +46,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
               </thead>
               <tbody>
                 {items.map((it) => (
-                  <tr key={it.id}><td>{it.description}</td><td className="text-right">{formatQty(it.quantity)}</td><td className="text-right">{m(it.unitPrice)}</td><td className="text-right">{m(shownLineTotal(it, q.taxMode))}</td></tr>
+                  <tr key={it.id}><td>{it.description}</td><td className="text-right">{formatQty(it.quantity)}</td><td className="text-right">{m(it.unitPrice)}</td><td className="text-right">{m(shownLineTotal(it))}</td></tr>
                 ))}
               </tbody>
             </table>

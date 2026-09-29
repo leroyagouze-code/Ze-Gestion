@@ -1,10 +1,12 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { auditLogs, memberships, plans, roles, stores, subscriptions, users } from "@/db/schema";
+import { auditLogs, memberships, plans, registers, roles, stores, subscriptions, users } from "@/db/schema";
+import { assertOwned } from "@/db/owned";
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { hashPassword } from "@/lib/auth/password";
+import { mailEnabled } from "@/lib/mail";
 import { deleteUserSessions, newToken } from "@/lib/auth/session";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
@@ -40,6 +42,7 @@ export async function listMembers(ctx: AppContext) {
         roleId: roles.id,
         roleName: roles.name,
         storeName: stores.name,
+        registerId: memberships.registerId,
         isOwner: memberships.isOwner,
         isActive: memberships.isActive,
         lastLoginAt: users.lastLoginAt,
@@ -52,6 +55,7 @@ export async function listMembers(ctx: AppContext) {
       .orderBy(users.fullName),
     roles: await tx.select().from(roles).orderBy(roles.name),
     stores: await tx.select({ id: stores.id, name: stores.name }).from(stores).where(eq(stores.isActive, true)),
+    registers: await tx.select({ id: registers.id, name: registers.name }).from(registers).where(eq(registers.isActive, true)).orderBy(registers.number),
   }));
 }
 
@@ -97,7 +101,8 @@ export async function addMember(ctx: AppContext, raw: z.input<typeof newUserSche
     assertCanGrant(ctx, role);
     const [u] = await tx
       .insert(users)
-      .values({ email: input.email, fullName: input.fullName, phone: input.phone ?? null, passwordHash, mustChangePassword: true })
+      // Adresse à confirmer par code à la première connexion (si les emails sont configurés)
+      .values({ email: input.email, fullName: input.fullName, phone: input.phone ?? null, passwordHash, mustChangePassword: true, emailVerifiedAt: mailEnabled() ? null : new Date() })
       .returning({ id: users.id });
     const userId = u.id;
     await tx.insert(memberships).values({ companyId: ctx.companyId, userId, roleId: input.roleId, storeId: input.storeId ?? null });
@@ -106,11 +111,17 @@ export async function addMember(ctx: AppContext, raw: z.input<typeof newUserSche
   });
 }
 
-export async function updateMember(ctx: AppContext, membershipId: string, patch: { roleId?: string; storeId?: string | null; isActive?: boolean }) {
+export async function updateMember(
+  ctx: AppContext,
+  membershipId: string,
+  patch: { roleId?: string; storeId?: string | null; registerId?: string | null; isActive?: boolean },
+) {
   ctxAssert(ctx, "users.manage");
   return withTenant(ctx, async (tx) => {
     const [m] = await tx.select().from(memberships).where(eq(memberships.id, membershipId));
     if (!m) throw new NotFoundError("Utilisateur");
+    await assertOwned(tx, stores, patch.storeId, "Boutique");
+    await assertOwned(tx, registers, patch.registerId, "Caisse");
     if (m.isOwner && (patch.isActive === false || patch.roleId)) throw new BusinessError("Le propriétaire du compte ne peut pas être désactivé ni changer de rôle");
     if (m.userId === ctx.userId && patch.isActive === false) throw new BusinessError("Vous ne pouvez pas vous désactiver vous-même");
     if (m.userId === ctx.userId && patch.roleId && !ctx.isAdmin) throw new BusinessError("Vous ne pouvez pas changer votre propre rôle");

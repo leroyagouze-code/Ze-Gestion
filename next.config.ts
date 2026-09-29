@@ -28,7 +28,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["@node-rs/argon2", "@react-pdf/renderer"],
+  serverExternalPackages: ["@node-rs/argon2", "@react-pdf/renderer", "nodemailer"],
   // Polices standard de pdfkit chargées dynamiquement : à inclure dans le build standalone
   outputFileTracingIncludes: {
     "/api/**/*": ["./node_modules/pdfkit/js/standard-fonts/**", "./node_modules/pdfkit/js/data/**"],

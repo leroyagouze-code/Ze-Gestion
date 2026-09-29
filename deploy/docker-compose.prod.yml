@@ -48,6 +48,13 @@ services:
       LICENSE_PRIVATE_KEY: ${LICENSE_PRIVATE_KEY:-}
       PAYMENT_MODE: ${PAYMENT_MODE:-}
       PAYGATE_API_KEY: ${PAYGATE_API_KEY:-}
+      # Emails (codes à 6 chiffres) : boîte noreply chez LWS. Sans SMTP_PASSWORD, envoi désactivé.
+      SMTP_HOST: ${SMTP_HOST:-mail.zegroupafrica.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:-noreply@zegroupafrica.com}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-ZE Gestion <noreply@zegroupafrica.com>}
     volumes: [uploads:/data/uploads]
     depends_on:
       migrate: { condition: service_completed_successfully }

@@ -20,7 +20,9 @@ export async function updateMemberAction(id: string, _: ActionState, fd: FormDat
   const ctx = await requireContext();
   const roleId = String(fd.get("roleId") ?? "");
   const storeId = String(fd.get("storeId") ?? "");
-  const res = await runAction(() => updateMember(ctx, id, { roleId: roleId || undefined, storeId: storeId || null }));
+  // Champ absent tant que l'entreprise n'a pas de caisse : on ne touche alors pas à la caisse par défaut.
+  const registerId = fd.has("registerId") ? String(fd.get("registerId") ?? "") || null : undefined;
+  const res = await runAction(() => updateMember(ctx, id, { roleId: roleId || undefined, storeId: storeId || null, registerId }));
   revalidatePath("/users");
   return res;
 }

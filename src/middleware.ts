@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/signup", "/f/", "/api/f/", "/proforma/", "/api/proforma/", "/api/health", "/api/installs", "/api/licences/", "/api/paiements/", "/acheter-licence", "/files/", "/forbidden", "/brand/"];
+const PUBLIC = ["/login", "/signup", "/mot-de-passe-oublie", "/f/", "/api/f/", "/proforma/", "/api/proforma/", "/api/health", "/api/installs", "/api/licences/", "/api/paiements/", "/acheter-licence", "/files/", "/forbidden", "/brand/"];
 
 /** Filtre rapide : sans cookie de session, redirection vers /login. La session est vérifiée côté serveur. */
 export function middleware(req: NextRequest) {

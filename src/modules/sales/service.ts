@@ -6,6 +6,7 @@ import {
   paymentMethods,
   payments,
   products,
+  registers,
   saleItems,
   sales,
   stores,
@@ -18,8 +19,10 @@ import { BusinessError, NotFoundError } from "@/lib/errors";
 import { computeTotals, currencyDecimals, isTaxMode, lineDiscount, round } from "@/lib/money";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
+import { applyPromoInSale, releasePromoInSale } from "@/modules/promos/service";
 import { nextDocumentNumber } from "@/modules/settings/sequences";
 import { applyMovement } from "@/modules/stock/service";
+import { sessionForSale } from "@/modules/registers/service";
 
 export const saleSchema = z.object({
   items: z
@@ -37,6 +40,8 @@ export const saleSchema = z.object({
     .array(z.object({ paymentMethodId: z.string().uuid(), amount: z.number().min(0), reference: z.string().max(100).nullish() }))
     .default([]),
   notes: z.string().max(1000).nullish(),
+  /** Code promo de l'entreprise saisi en caisse : sa réduction est calculée par le serveur. */
+  promoCode: z.string().trim().max(40).nullish(),
 });
 export type SaleInput = z.input<typeof saleSchema>;
 
@@ -76,7 +81,18 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       return { p, quantity: i.quantity, unitPrice, discount: i.discount, taxRate: p.taxRate };
     });
     const taxMode = isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line";
-    const totals = computeTotals(lines, input.discount, decimals, taxMode);
+    // Code promo : réduction ajoutée à la remise globale, sur le montant des lignes après leurs remises
+    // (même base que la remise globale : TTC en mode "line", HT en mode "total").
+    const promo = input.promoCode
+      ? await applyPromoInSale(
+          tx,
+          ctx,
+          input.promoCode,
+          round(lines.reduce((s, l) => s + Math.max(l.quantity * l.unitPrice - lineDiscount(l), 0), 0), decimals),
+          decimals,
+        )
+      : null;
+    const totals = computeTotals(lines, input.discount + (promo?.discount ?? 0), decimals, taxMode);
     if (totals.total < 0) throw new BusinessError("Total négatif");
 
     // Paiements : on n'enregistre pas la monnaie rendue ; le reste dû devient une créance client.
@@ -99,6 +115,8 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       if (!c) throw new NotFoundError("Client");
     }
 
+    // Caisse et session du caissier (obligatoires dès que la boutique a des caisses)
+    const session = await sessionForSale(tx, ctx);
     const number = await nextDocumentNumber(tx, ctx.companyId, "sale");
     const costTotal = round(lines.reduce((s, l) => s + l.quantity * l.p.purchasePrice, 0), decimals);
     const [sale] = await tx
@@ -109,6 +127,8 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         number,
         customerId: input.customerId ?? null,
         userId: ctx.userId,
+        registerId: session?.registerId ?? null,
+        cashSessionId: session?.id ?? null,
         subtotal: totals.subtotal,
         discountTotal: totals.discountTotal,
         taxTotal: totals.taxTotal,
@@ -118,6 +138,9 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         paidAmount: paid,
         dueAmount: due,
         notes: input.notes ?? null,
+        promoCodeId: promo?.promo.id ?? null,
+        promoCode: promo?.promo.code ?? null,
+        promoDiscount: promo?.discount ?? 0,
       })
       .returning({ id: sales.id });
 
@@ -171,6 +194,7 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         amount,
         reference: p.reference ?? null,
         userId: ctx.userId,
+        cashSessionId: session?.id ?? null,
       });
     }
 
@@ -190,10 +214,10 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       action: "sale.created",
       entityType: "sale",
       entityId: sale.id,
-      metadata: { number, total: totals.total, due },
+      metadata: { number, total: totals.total, due, ...(promo ? { promoCode: promo.promo.code, promoDiscount: promo.discount } : {}) },
       ip: ctx.ip,
     });
-    return { id: sale.id, number, total: totals.total, paid, due, change };
+    return { id: sale.id, number, total: totals.total, paid, due, change, promoCode: promo?.promo.code ?? null, promoDiscount: promo?.discount ?? 0 };
   });
 }
 
@@ -218,6 +242,7 @@ export async function cancelSale(ctx: AppContext, id: string, reason: string) {
       });
     }
     await tx.update(sales).set({ status: "cancelled", dueAmount: 0 }).where(eq(sales.id, id));
+    if (sale.promoCodeId) await releasePromoInSale(tx, sale.promoCodeId);
     await tx.update(invoices).set({ status: "cancelled" }).where(eq(invoices.saleId, id));
     if (sale.customerId) {
       await tx
@@ -240,7 +265,10 @@ export async function cancelSale(ctx: AppContext, id: string, reason: string) {
   });
 }
 
-export async function listSales(ctx: AppContext, opts: { page?: number; from?: Date; to?: Date; customerId?: string }) {
+export async function listSales(
+  ctx: AppContext,
+  opts: { page?: number; from?: Date; to?: Date; customerId?: string; userId?: string; registerId?: string; cashSessionId?: string },
+) {
   ctxAssert(ctx, "sales.view");
   const { limit, offset, page } = pageParams(opts.page);
   return withTenant(ctx, async (tx) => {
@@ -248,8 +276,11 @@ export async function listSales(ctx: AppContext, opts: { page?: number; from?: D
     if (opts.from) conds.push(gte(sales.createdAt, opts.from));
     if (opts.to) conds.push(lt(sales.createdAt, opts.to));
     if (opts.customerId) conds.push(eq(sales.customerId, opts.customerId));
+    if (opts.registerId) conds.push(eq(sales.registerId, opts.registerId));
+    if (opts.cashSessionId) conds.push(eq(sales.cashSessionId, opts.cashSessionId));
     // Sans « ventes de tous les vendeurs », chacun ne voit que ses propres ventes.
     if (!ctxCan(ctx, "sales.view_all")) conds.push(eq(sales.userId, ctx.userId));
+    else if (opts.userId) conds.push(eq(sales.userId, opts.userId));
     const where = conds.length ? and(...conds) : undefined;
     const rows = await tx
       .select({
@@ -263,11 +294,13 @@ export async function listSales(ctx: AppContext, opts: { page?: number; from?: D
         customerName: customers.name,
         userName: users.fullName,
         storeName: stores.name,
+        registerName: registers.name,
       })
       .from(sales)
       .leftJoin(customers, eq(customers.id, sales.customerId))
       .leftJoin(users, eq(users.id, sales.userId))
       .innerJoin(stores, eq(stores.id, sales.storeId))
+      .leftJoin(registers, eq(registers.id, sales.registerId))
       .where(where)
       .orderBy(desc(sales.createdAt))
       .limit(limit)
@@ -281,11 +314,12 @@ export async function getSale(ctx: AppContext, id: string) {
   ctxAssert(ctx, "sales.view");
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
-      .select({ sale: sales, customer: customers, userName: users.fullName, storeName: stores.name })
+      .select({ sale: sales, customer: customers, userName: users.fullName, storeName: stores.name, registerName: registers.name })
       .from(sales)
       .leftJoin(customers, eq(customers.id, sales.customerId))
       .leftJoin(users, eq(users.id, sales.userId))
       .innerJoin(stores, eq(stores.id, sales.storeId))
+      .leftJoin(registers, eq(registers.id, sales.registerId))
       .where(eq(sales.id, id));
     if (!row || (!ctxCan(ctx, "sales.view_all") && row.sale.userId !== ctx.userId)) throw new NotFoundError("Vente");
     const items = await tx.select().from(saleItems).where(eq(saleItems.saleId, id));
@@ -314,11 +348,6 @@ export async function posBootstrap(ctx: AppContext) {
       .from(paymentMethods)
       .where(eq(paymentMethods.isEnabled, true))
       .orderBy(paymentMethods.sortOrder),
-    customers: await tx
-      .select({ id: customers.id, name: customers.name, phone: customers.phone })
-      .from(customers)
-      .orderBy(customers.name)
-      .limit(1000),
   }));
 }
 

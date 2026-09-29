@@ -3,6 +3,7 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Badge, Card, Field, PageHeader, SelectField, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
+import { mailEnabled } from "@/lib/mail";
 import { listMembers } from "@/modules/users/service";
 import { addMemberAction, resetPasswordAction, toggleMemberAction, updateMemberAction } from "./actions";
 
@@ -10,7 +11,7 @@ export const metadata = { title: "Utilisateurs" };
 
 export default async function UsersPage() {
   const ctx = await requireContext("users.manage");
-  const { members, roles, stores } = await listMembers(ctx);
+  const { members, roles, stores, registers } = await listMembers(ctx);
   const roleOpts = roles.map((r) => ({ value: r.id, label: r.name }));
   const storeOpts = stores.map((s) => ({ value: s.id, label: s.name }));
   return (
@@ -38,6 +39,12 @@ export default async function UsersPage() {
                             <option value="">Boutique par défaut</option>
                             {storeOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
+                          {registers.length > 0 && (
+                            <select name="registerId" defaultValue={u.registerId ?? ""} className="input w-36" aria-label="Caisse">
+                              <option value="">Caisse au choix</option>
+                              {registers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </select>
+                          )}
                           <SubmitButton className="btn-secondary px-3 py-1.5" pendingText="…">OK</SubmitButton>
                         </ActionForm>
                       )}
@@ -64,7 +71,13 @@ export default async function UsersPage() {
         <Card title="Ajouter un utilisateur">
           <ActionForm action={addMemberAction} className="space-y-3" resetOnSuccess>
             <Field label="Nom complet" name="fullName" required />
-            <Field label="Email" name="email" type="email" required />
+            <Field
+              label="Email"
+              name="email"
+              type="email"
+              required
+              hint={mailEnabled() ? "Une vraie adresse : il recevra un code pour la confirmer à sa première connexion" : undefined}
+            />
             <Field label="Téléphone" name="phone" type="tel" />
             <Field label="Mot de passe provisoire" name="password" type="text" minLength={8} required hint="Provisoire : il devra le changer à sa première connexion" />
             <SelectField label="Rôle" name="roleId" options={roleOpts} defaultValue={roles.find((r) => r.name === "Caissier")?.id} />
