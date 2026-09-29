@@ -16,7 +16,7 @@ export default async function PosPage() {
       decimals={currencyDecimals(ctx.company.currency)}
       taxMode={isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line"}
       paymentMethods={canCredit ? data.paymentMethods : data.paymentMethods.filter((pm) => pm.type !== "credit")}
-      customers={data.customers}
+      canCreateCustomer={can(ctx.permissions, "customers.create")}
       canDiscount={can(ctx.permissions, "sales.discount")}
       canInvoice={can(ctx.permissions, "invoices.create")}
     />
