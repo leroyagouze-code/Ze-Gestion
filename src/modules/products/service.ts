@@ -270,15 +270,61 @@ export const CSV_COLUMNS = [
   "date_expiration",
 ] as const;
 
+/** Nom comparable : sans espaces superflus, casse ni accents (« Crème  Fraîche » = « creme fraiche »). */
+export function normalizeProductName(s: string) {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+const normCode = (s: string | null | undefined) => (s ? s.trim().toLowerCase() : "");
+
+type ImportKnown = { id: string; name: string; sku: string | null; barcode: string | null; reference: string | null };
+
+/**
+ * Import CSV idempotent : une ligne correspond à un produit actif de l'entreprise par code-barres,
+ * puis SKU, puis référence, puis nom normalisé (si aucun identifiant ne le contredit).
+ * Correspondance → mise à jour ; sinon création. Un même produit répété dans le fichier n'est
+ * traité qu'une fois (première ligne retenue, les suivantes sont ignorées).
+ * Le stock n'est jamais écrasé : stock_initial ne sert qu'à la création (mouvement « Stock initial »).
+ */
 export async function importProducts(ctx: AppContext, rows: Record<string, string>[]) {
   ctxAssert(ctx, "products.edit");
   const errors: { line: number; message: string }[] = [];
   let created = 0;
   let updated = 0;
+  let skipped = 0;
   if (rows.length > 5000) throw new BusinessError("5 000 lignes maximum par import");
+  const canCost = ctxCan(ctx, "products.cost");
   await withTenant(ctx, async (tx) => {
     const [defaultTax] = await tx.select({ id: taxes.id }).from(taxes).where(eq(taxes.isDefault, true)).limit(1);
+
+    // Index en mémoire des produits existants, enrichi au fil de l'import (doublons internes au fichier)
+    const byBarcode = new Map<string, ImportKnown>();
+    const bySku = new Map<string, ImportKnown>();
+    const byReference = new Map<string, ImportKnown>();
+    const byName = new Map<string, ImportKnown>();
+    const index = (p: ImportKnown) => {
+      if (p.barcode) byBarcode.set(normCode(p.barcode), p);
+      if (p.sku) bySku.set(normCode(p.sku), p);
+      if (p.reference) byReference.set(normCode(p.reference), p);
+      byName.set(normalizeProductName(p.name), p);
+    };
+    const existing = await tx
+      .select({ id: products.id, name: products.name, sku: products.sku, barcode: products.barcode, reference: products.reference })
+      .from(products)
+      .where(eq(products.isActive, true))
+      .orderBy(desc(products.createdAt)); // en cas d'homonymes, le plus ancien l'emporte (indexé en dernier)
+    existing.forEach(index);
+    // Le SKU est unique en base, produits désactivés compris
+    const skuOwners = new Map<string, string>(
+      (await tx.select({ id: products.id, sku: products.sku }).from(products).where(sql`${products.sku} is not null`)).map((p) => [
+        normCode(p.sku),
+        p.id,
+      ]),
+    );
+    const touched = new Map<string, number>(); // id produit → ligne du fichier qui l'a créé / mis à jour
+
     for (const [i, r] of rows.entries()) {
+      const line = i + 2;
       const parsed = productSchema.safeParse({
         name: r.nom,
         reference: r.reference,
@@ -296,34 +342,90 @@ export async function importProducts(ctx: AppContext, rows: Record<string, strin
         taxId: defaultTax?.id,
       });
       if (!parsed.success) {
-        errors.push({ line: i + 2, message: parsed.error.issues.map((x) => `${x.path.join(".")}: ${x.message}`).join(", ") });
+        errors.push({ line, message: parsed.error.issues.map((x) => `${x.path.join(".")}: ${x.message}`).join(", ") });
+        skipped++;
         continue;
       }
-      const existing = parsed.data.sku
-        ? (await tx.select({ id: products.id }).from(products).where(eq(products.sku, parsed.data.sku)).limit(1))[0]
-        : undefined;
-      if (existing) {
+      const d = parsed.data;
+      const barcode = normCode(d.barcode);
+      const sku = normCode(d.sku);
+      const reference = normCode(d.reference);
+
+      // Identifiants d'abord ; le nom seulement si aucun identifiant renseigné ne le contredit
+      let match = (barcode && byBarcode.get(barcode)) || (sku && bySku.get(sku)) || (reference && byReference.get(reference)) || undefined;
+      if (!match) {
+        const byN = byName.get(normalizeProductName(d.name));
+        const conflicts =
+          byN &&
+          ((barcode && byN.barcode && normCode(byN.barcode) !== barcode) ||
+            (sku && byN.sku && normCode(byN.sku) !== sku) ||
+            (reference && byN.reference && normCode(byN.reference) !== reference));
+        if (byN && !conflicts) match = byN;
+      }
+
+      if (match && touched.has(match.id)) {
+        errors.push({ line, message: `doublon de la ligne ${touched.get(match.id)}, ignorée` });
+        skipped++;
+        continue;
+      }
+      if (sku && skuOwners.has(sku) && skuOwners.get(sku) !== match?.id) {
+        errors.push({ line, message: `le SKU « ${d.sku} » appartient déjà à un autre produit` });
+        skipped++;
+        continue;
+      }
+
+      if (match) {
+        // Mise à jour : ce que le fichier ne renseigne pas est conservé, et le stock ne bouge pas
+        const has = (col: string) => col in r && String(r[col] ?? "").trim() !== "";
+        const categoryId = d.categoryName ? await upsertNamed(tx, ctx.companyId, categories, d.categoryName) : undefined;
+        const brandId = d.brandName ? await upsertNamed(tx, ctx.companyId, brands, d.brandName) : undefined;
         await tx
           .update(products)
           .set({
-            name: parsed.data.name,
-            salePrice: parsed.data.salePrice,
-            purchasePrice: ctxCan(ctx, "products.cost") ? parsed.data.purchasePrice : undefined,
-            promoPrice: parsed.data.promoPrice,
-            barcode: parsed.data.barcode,
-            minStock: parsed.data.minStock,
+            name: d.name,
+            reference: d.reference ?? undefined,
+            sku: d.sku ?? undefined,
+            barcode: d.barcode ?? undefined,
+            categoryId,
+            brandId,
+            salePrice: d.salePrice,
+            purchasePrice: canCost && has("prix_achat") ? d.purchasePrice : undefined,
+            promoPrice: "prix_promo" in r ? (d.promoPrice ?? null) : undefined,
+            minStock: has("stock_minimum") ? d.minStock : undefined,
+            unit: has("unite") ? d.unit : undefined,
+            expiryDate: "date_expiration" in r ? d.expiryDate : undefined,
             updatedAt: new Date(),
           })
-          .where(eq(products.id, existing.id));
+          .where(eq(products.id, match.id));
+        const next: ImportKnown = {
+          id: match.id,
+          name: d.name,
+          sku: d.sku ?? match.sku,
+          barcode: d.barcode ?? match.barcode,
+          reference: d.reference ?? match.reference,
+        };
+        if (match.sku && normCode(match.sku) !== normCode(next.sku)) skuOwners.delete(normCode(match.sku));
+        if (next.sku) skuOwners.set(normCode(next.sku), match.id);
+        index(next);
+        touched.set(match.id, line);
         updated++;
       } else {
-        await createInTx(tx, ctx, parsed.data);
+        const id = await createInTx(tx, ctx, d);
+        index({ id, name: d.name, sku: d.sku, barcode: d.barcode, reference: d.reference });
+        if (sku) skuOwners.set(sku, id);
+        touched.set(id, line);
         created++;
       }
     }
-    await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "product.imported", metadata: { created, updated, errors: errors.length }, ip: ctx.ip });
+    await audit(tx, {
+      companyId: ctx.companyId,
+      userId: ctx.userId,
+      action: "product.imported",
+      metadata: { created, updated, skipped },
+      ip: ctx.ip,
+    });
   });
-  return { created, updated, errors };
+  return { created, updated, skipped, errors };
 }
 
 export async function exportProducts(ctx: AppContext) {
