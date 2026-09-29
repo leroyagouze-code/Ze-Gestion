@@ -19,7 +19,7 @@ import { assertCollectMethod, assertOwned } from "@/db/owned";
 import { audit } from "@/lib/audit";
 import { newToken, getCompany } from "@/lib/auth/session";
 import { BusinessError, NotFoundError } from "@/lib/errors";
-import { computeTotals, currencyDecimals, isTaxMode, lineDiscount, round } from "@/lib/money";
+import { computeTotals, currencyDecimals, isTaxMode, lineDiscount, round, type TaxMode } from "@/lib/money";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, type AppContext } from "@/modules/auth/context";
 import { nextDocumentNumber } from "@/modules/settings/sequences";
@@ -142,9 +142,18 @@ export function assertCorrectable(inv: typeof invoices.$inferSelect) {
 }
 
 /** Création de la facture dans une transaction existante (utilisée aussi pour la correction). */
-export async function createManualInvoiceInTx(tx: Tx, ctx: AppContext, input: z.output<typeof manualInvoiceSchema>) {
+/**
+ * opts.taxMode : mode de TVA imposé (conversion d'une proforma, qui garde le mode figé à sa création) ;
+ * par défaut celui de l'entreprise. opts.auditMeta complète le journal (ex. proforma d'origine).
+ */
+export async function createManualInvoiceInTx(
+  tx: Tx,
+  ctx: AppContext,
+  input: z.output<typeof manualInvoiceSchema>,
+  opts: { taxMode?: TaxMode; auditMeta?: Record<string, unknown> } = {},
+) {
   const decimals = currencyDecimals(ctx.company.currency);
-  const taxMode = isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line";
+  const taxMode = opts.taxMode ?? (isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line");
   const totals = computeTotals(input.items, input.discount, decimals, taxMode);
   {
     const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)))[0] : null;
@@ -193,7 +202,7 @@ export async function createManualInvoiceInTx(tx: Tx, ctx: AppContext, input: z.
         .set({ balanceDue: sql`${customers.balanceDue} + ${totals.total}`, totalSpent: sql`${customers.totalSpent} + ${totals.total}` })
         .where(eq(customers.id, customer.id));
     }
-    await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "invoice.created", entityType: "invoice", entityId: inv.id, metadata: { number, total: totals.total }, ip: ctx.ip });
+    await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "invoice.created", entityType: "invoice", entityId: inv.id, metadata: { number, total: totals.total, ...opts.auditMeta }, ip: ctx.ip });
     return inv.id;
    }
 }

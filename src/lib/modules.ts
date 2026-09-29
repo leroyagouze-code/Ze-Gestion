@@ -8,6 +8,7 @@ export const MODULES = {
   pos: { href: "/pos", label: "Caisse", hint: "Vente au comptoir et tickets" },
   sales: { href: "/sales", label: "Ventes", hint: "Historique des ventes de caisse" },
   invoices: { href: "/invoices", label: "Factures", hint: "Factures manuelles et paiements" },
+  quotes: { href: "/quotes", label: "Proformas", hint: "Factures proforma (devis) à convertir en facture" },
   products: { href: "/products", label: "Produits", hint: "Catalogue et prix" },
   stock: { href: "/stock", label: "Stock", hint: "Entrées, sorties, inventaire" },
   customers: { href: "/customers", label: "Clients", hint: "Fiches clients et crédits" },

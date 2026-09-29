@@ -803,6 +803,75 @@ export const invoiceItems = pgTable(
   (t) => [index("invoice_items_invoice_idx").on(t.invoiceId)],
 );
 
+/* ───────────────────────── Proformas (devis) ───────────────────────── */
+
+/**
+ * Statut enregistré d'une proforma. « Expirée » n'est pas stocké : il se déduit de valid_until
+ * pour une proforma encore en brouillon ou envoyée (voir quoteDisplayStatus).
+ */
+export const quoteStatus = pgEnum("quote_status", ["draft", "sent", "accepted", "refused", "converted"]);
+
+export const quotes = pgTable(
+  "quotes",
+  {
+    id: id(),
+    companyId: companyId(),
+    number: text("number").notNull(),
+    /** Numéro de révision : augmente à chaque modification d'une proforma déjà envoyée au client. */
+    revision: integer("revision").notNull().default(1),
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    customerSnapshot: jsonb("customer_snapshot").$type<CustomerSnapshot>(),
+    issueDate: date("issue_date").notNull(),
+    validUntil: date("valid_until").notNull(),
+    status: quoteStatus("status").notNull().default("draft"),
+    subtotal: money("subtotal").notNull(),
+    /** Remise globale saisie (hors remises de ligne), reprise telle quelle à la conversion. */
+    globalDiscount: money("global_discount").notNull().default(0),
+    discountTotal: money("discount_total").notNull().default(0),
+    taxTotal: money("tax_total").notNull().default(0),
+    total: money("total").notNull(),
+    /** Mode de TVA figé à la création (comme sur les factures). */
+    taxMode: text("tax_mode").notNull().default("line"),
+    conditions: text("conditions"),
+    notes: text("notes"),
+    publicToken: text("public_token").notNull().unique(),
+    convertedInvoiceId: uuid("converted_invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    refusedAt: timestamp("refused_at", { withTimezone: true }),
+    convertedAt: timestamp("converted_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("quotes_company_number_uq").on(t.companyId, t.number),
+    index("quotes_company_created_idx").on(t.companyId, t.createdAt.desc()),
+    index("quotes_company_customer_idx").on(t.companyId, t.customerId),
+  ],
+);
+
+export const quoteItems = pgTable(
+  "quote_items",
+  {
+    id: id(),
+    companyId: companyId(),
+    quoteId: uuid("quote_id")
+      .notNull()
+      .references(() => quotes.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+    productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    description: text("description").notNull(),
+    quantity: qty("quantity").notNull(),
+    unitPrice: money("unit_price").notNull(),
+    discount: money("discount").notNull().default(0),
+    taxRate: numeric("tax_rate", { precision: 6, scale: 3, mode: "number" }).notNull().default(0),
+    taxAmount: money("tax_amount").notNull().default(0),
+    lineTotal: money("line_total").notNull(),
+  },
+  (t) => [index("quote_items_quote_idx").on(t.quoteId)],
+);
+
 export const payments = pgTable(
   "payments",
   {
@@ -863,6 +932,8 @@ export const TENANT_TABLES = [
   "sale_items",
   "invoices",
   "invoice_items",
+  "quotes",
+  "quote_items",
   "payments",
   "expenses",
   "registers",
