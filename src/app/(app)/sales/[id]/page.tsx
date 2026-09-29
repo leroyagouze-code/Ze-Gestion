@@ -24,7 +24,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
     <>
       <PageHeader
         title={`Vente ${s.number}`}
-        subtitle={`${formatDate(s.createdAt, true)} · ${d.storeName} · ${d.userName ?? "—"}`}
+        subtitle={`${formatDate(s.createdAt, true)} · ${d.storeName} · ${d.userName ?? "—"}${d.registerName ? ` · ${d.registerName}` : ""}`}
         actions={
           <>
             {s.status === "cancelled" ? <Badge tone="red">Annulée</Badge> : s.dueAmount > 0 ? <Badge tone="amber">Crédit</Badge> : <Badge tone="green">Payée</Badge>}

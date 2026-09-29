@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   primaryKey,
   pgEnum,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().defaultRandom();
@@ -296,6 +297,8 @@ export const memberships = pgTable(
       .notNull()
       .references(() => roles.id),
     storeId: uuid("store_id").references(() => stores.id, { onDelete: "set null" }),
+    /** Caisse proposée d'office à l'ouverture de session (voir registers). */
+    registerId: uuid("register_id").references((): AnyPgColumn => registers.id, { onDelete: "set null" }),
     isOwner: boolean("is_owner").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: createdAt(),
@@ -303,6 +306,71 @@ export const memberships = pgTable(
   (t) => [
     uniqueIndex("memberships_company_user_uq").on(t.companyId, t.userId),
     index("memberships_user_idx").on(t.userId),
+  ],
+);
+
+/** Caisses (postes d'encaissement numérotés) d'une boutique : « Caisse 1 », « Caisse 2 »… */
+export const registers = pgTable(
+  "registers",
+  {
+    id: id(),
+    companyId: companyId(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    name: text("name").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("registers_company_number_uq").on(t.companyId, t.number), index("registers_company_store_idx").on(t.companyId, t.storeId)],
+);
+
+/** Résumé figé à la clôture d'une session de caisse (rapport Z). */
+export type CashSessionSummary = {
+  salesCount: number;
+  salesTotal: number;
+  cancelledCount: number;
+  cancelledTotal: number;
+  discountTotal: number;
+  creditTotal: number;
+  cashIn: number;
+  byMethod: { method: string; type: string; count: number; total: number }[];
+};
+
+/**
+ * Sessions de caisse : ouverture (fond de caisse) puis clôture (espèces comptées, écart).
+ * Une seule session ouverte par caisse et par caissier (index uniques partiels).
+ */
+export const cashSessions = pgTable(
+  "cash_sessions",
+  {
+    id: id(),
+    companyId: companyId(),
+    registerId: uuid("register_id")
+      .notNull()
+      .references(() => registers.id),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id),
+    status: text("status").notNull().default("open"), // open | closed
+    openedBy: uuid("opened_by").references(() => users.id, { onDelete: "set null" }),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    openingFloat: money("opening_float").notNull().default(0),
+    closedBy: uuid("closed_by").references(() => users.id, { onDelete: "set null" }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    expectedCash: money("expected_cash"),
+    countedCash: money("counted_cash"),
+    difference: money("difference"),
+    /** Clôturée par un responsable à la place du caissier. */
+    forced: boolean("forced").notNull().default(false),
+    closingNotes: text("closing_notes"),
+    summary: jsonb("summary").$type<CashSessionSummary>(),
+  },
+  (t) => [
+    uniqueIndex("cash_sessions_register_open_uq").on(t.registerId).where(sql`status = 'open'`),
+    uniqueIndex("cash_sessions_user_open_uq").on(t.companyId, t.openedBy).where(sql`status = 'open'`),
+    index("cash_sessions_company_opened_idx").on(t.companyId, t.openedAt.desc()),
   ],
 );
 
@@ -522,6 +590,8 @@ export const sales = pgTable(
     number: text("number").notNull(),
     customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    registerId: uuid("register_id").references(() => registers.id, { onDelete: "set null" }),
+    cashSessionId: uuid("cash_session_id").references(() => cashSessions.id, { onDelete: "set null" }),
     status: saleStatus("status").notNull().default("completed"),
     subtotal: money("subtotal").notNull(), // HT après remises lignes
     discountTotal: money("discount_total").notNull().default(0),
@@ -539,6 +609,7 @@ export const sales = pgTable(
     uniqueIndex("sales_company_number_uq").on(t.companyId, t.number),
     index("sales_company_created_idx").on(t.companyId, t.createdAt.desc()),
     index("sales_company_customer_idx").on(t.companyId, t.customerId),
+    index("sales_cash_session_idx").on(t.cashSessionId),
   ],
 );
 
@@ -645,9 +716,12 @@ export const payments = pgTable(
     amount: money("amount").notNull(),
     reference: text("reference"),
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Session de caisse où l'argent a été encaissé (ventes de caisse). */
+    cashSessionId: uuid("cash_session_id").references(() => cashSessions.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [
+    index("payments_cash_session_idx").on(t.cashSessionId),
     index("payments_company_created_idx").on(t.companyId, t.createdAt.desc()),
     index("payments_sale_idx").on(t.saleId),
   ],
@@ -692,4 +766,6 @@ export const TENANT_TABLES = [
   "invoice_items",
   "payments",
   "expenses",
+  "registers",
+  "cash_sessions",
 ] as const;

@@ -71,6 +71,13 @@
       "when": 1790534112662,
       "tag": "0009_achat_licences",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790711773090,
+      "tag": "0013_caisses",
+      "breakpoints": true
     }
   ]
 }

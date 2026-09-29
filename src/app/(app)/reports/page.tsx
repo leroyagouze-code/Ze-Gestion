@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { parsePeriod, PeriodFilter } from "@/components/period-filter";
 import { Card, PageHeader, Stat, TableWrap } from "@/components/ui";
 import { requireContext } from "@/lib/auth/server";
@@ -33,6 +34,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                 <a href="/api/export/customers" className="btn-secondary">Clients CSV</a>
               </>
             )}
+            <Link href="/reports/caissiers" className="btn-secondary">Par caissier / caisse</Link>
             <PrintButton />
           </>
         }

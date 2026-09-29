@@ -27,6 +27,7 @@ export const PERMISSIONS = {
   "data.export": "Exporter les données (CSV)",
   "users.manage": "Gérer les utilisateurs et rôles",
   "settings.manage": "Modifier les paramètres de l'entreprise",
+  "registers.manage": "Gérer les caisses (numéros, activation)",
   "audit.view": "Consulter le journal d'activité",
 } as const;
 
@@ -39,7 +40,7 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   { label: "Ventes & factures", permissions: ["sales.create", "sales.discount", "sales.credit", "sales.view", "sales.view_all", "sales.cancel", "invoices.view", "invoices.create", "invoices.cancel"] },
   { label: "Tiers", permissions: ["customers.view", "customers.create", "customers.edit", "suppliers.view", "suppliers.edit"] },
   { label: "Finances", permissions: ["expenses.view", "expenses.edit"] },
-  { label: "Administration", permissions: ["data.export", "users.manage", "settings.manage"] },
+  { label: "Administration", permissions: ["data.export", "users.manage", "settings.manage", "registers.manage"] },
 ];
 
 /** Rôle système qui détient toujours toutes les permissions, y compris celles ajoutées plus tard. */

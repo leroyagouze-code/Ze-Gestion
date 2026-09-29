@@ -6,6 +6,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import {
   BarChart3,
+  Calculator,
   Boxes,
   FileText,
   History,
@@ -29,6 +30,7 @@ const ICONS = {
   dashboard: LayoutDashboard,
   pos: ShoppingCart,
   sales: Receipt,
+  registers: Calculator,
   invoices: FileText,
   products: Package,
   stock: Boxes,
