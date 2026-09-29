@@ -78,6 +78,13 @@
       "when": 1790711043938,
       "tag": "0010_entree_stock_cout",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790711742982,
+      "tag": "0011_codes_promo",
+      "breakpoints": true
     }
   ]
 }

@@ -21,11 +21,11 @@ export function formatMoney(value: number, currency = "XOF", locale = "fr-FR") {
   const d = currencyDecimals(currency);
   const n = new Intl.NumberFormat(locale, { minimumFractionDigits: d, maximumFractionDigits: d }).format(value);
   const symbol = currency === "XOF" || currency === "XAF" ? "FCFA" : currency;
-  return `${n.replace(/ /g, " ")} ${symbol}`;
+  return `${n.replace(/ /g, " ")} ${symbol}`;
 }
 
 export function formatQty(value: number) {
-  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(value).replace(/ /g, " ");
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(value).replace(/ /g, " ");
 }
 
 export type LineInput = { quantity: number; unitPrice: number; discount?: number; taxRate?: number };

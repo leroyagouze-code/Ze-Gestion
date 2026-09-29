@@ -75,6 +75,7 @@ export default async function SalePage({ params }: { params: Promise<{ id: strin
               <div key={v.rate} className="flex justify-between text-slate-500"><span>dont {formatQty(v.rate)} % sur {m(v.base)}</span><span>{m(v.tax)}</span></div>
             ))}
             {s.discountTotal > 0 && <div className="flex justify-between"><span>Remises</span><span>−{m(s.discountTotal)}</span></div>}
+            {s.promoCode && <div className="flex justify-between text-emerald-700"><span>dont code promo <span className="font-mono">{s.promoCode}</span></span><span>−{m(s.promoDiscount)}</span></div>}
             <div className="flex justify-between text-base font-semibold"><span>Total TTC</span><span>{m(s.total)}</span></div>
             {showProfit && <div className="flex justify-between text-slate-500"><span>Marge brute</span><span>{m(s.subtotal - s.costTotal)}</span></div>}
           </div>
