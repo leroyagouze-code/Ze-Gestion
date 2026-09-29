@@ -474,6 +474,7 @@ export const stockMovements = pgTable(
     quantity: qty("quantity").notNull(), // signée : + entrée, - sortie
     quantityAfter: qty("quantity_after").notNull(),
     unitCost: money("unit_cost"),
+    supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
     reason: text("reason"),
     referenceType: text("reference_type"),
     referenceId: uuid("reference_id"),
