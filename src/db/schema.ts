@@ -257,6 +257,8 @@ export const users = pgTable("users", {
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   mustChangePassword: boolean("must_change_password").notNull().default(false),
   passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
+  // Adresse confirmée par un code reçu par email ; nul = à vérifier (seulement si l'envoi d'emails est configuré)
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -282,6 +284,27 @@ export const loginAttempts = pgTable("login_attempts", {
   count: integer("count").notNull().default(0),
   windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Codes à 6 chiffres envoyés par email (vérification de l'adresse, mot de passe oublié).
+ * Seule l'empreinte est stockée ; table hors entreprise (comme users/sessions), donc sans RLS.
+ */
+export const emailCodes = pgTable(
+  "email_codes",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(), // verify_email | reset_password
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("email_codes_user_purpose_idx").on(t.userId, t.purpose, t.createdAt)],
+);
 
 export const auditLogs = pgTable(
   "audit_logs",
