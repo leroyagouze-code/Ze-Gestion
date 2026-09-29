@@ -170,7 +170,7 @@ export function Pos({
                 <div className="truncate text-sm font-medium">{l.product.name}</div>
                 <div className="text-xs text-slate-500">{m(price(l.product))} / {l.product.unit}</div>
               </div>
-              <div className="text-right text-sm font-semibold">{m((taxMode === "total" ? totals.lines[i]?.net : totals.lines[i]?.lineTotal) ?? 0)}</div>
+              <div className="text-right text-sm font-semibold">{m(totals.lines[i]?.gross ?? 0)}</div>
             </div>
             <div className="mt-2 flex items-center gap-2">
               <button className="btn-secondary h-9 w-9 p-0" aria-label="Moins" onClick={() => setCart((c) => (l.quantity <= 1 ? c.filter((_, j) => j !== i) : c.map((x, j) => (j === i ? { ...x, quantity: x.quantity - 1 } : x))))}><Minus size={16} /></button>
@@ -202,6 +202,9 @@ export function Pos({
         <div className="space-y-1 text-sm">
           <div className="flex justify-between text-slate-500"><span>Total HT</span><span>{m(totals.subtotal)}</span></div>
           <div className="flex justify-between text-slate-500"><span>TVA</span><span>{m(totals.taxTotal)}</span></div>
+          {totals.vat.length > 1 && totals.vat.map((v) => (
+            <div key={v.rate} className="flex justify-between text-xs text-slate-400"><span>dont {formatQty(v.rate)} % sur {m(v.base)}</span><span>{m(v.tax)}</span></div>
+          ))}
           {totals.discountTotal > 0 && <div className="flex justify-between text-slate-500"><span>Remises</span><span>−{m(totals.discountTotal)}</span></div>}
           <div className="flex justify-between text-xl font-bold"><span>Total</span><span>{m(totals.total)}</span></div>
         </div>
