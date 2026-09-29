@@ -7,6 +7,7 @@ import clsx from "clsx";
 import {
   BarChart3,
   Boxes,
+  FileSignature,
   FileText,
   History,
   KeyRound,
@@ -30,6 +31,7 @@ const ICONS = {
   pos: ShoppingCart,
   sales: Receipt,
   invoices: FileText,
+  quotes: FileSignature,
   products: Package,
   stock: Boxes,
   customers: Users,

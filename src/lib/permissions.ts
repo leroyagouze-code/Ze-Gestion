@@ -17,6 +17,8 @@ export const PERMISSIONS = {
   "invoices.view": "Consulter les factures",
   "invoices.create": "Créer des factures",
   "invoices.cancel": "Annuler une facture",
+  "quotes.view": "Consulter les proformas",
+  "quotes.create": "Créer, modifier et convertir les proformas",
   "customers.view": "Consulter les clients",
   "customers.create": "Ajouter des clients",
   "customers.edit": "Modifier les clients",
@@ -36,7 +38,7 @@ export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
   { label: "Général", permissions: ["dashboard.view", "reports.view", "reports.profit", "audit.view"] },
   { label: "Produits & stock", permissions: ["products.view", "products.edit", "products.delete", "products.cost", "stock.view", "stock.adjust"] },
-  { label: "Ventes & factures", permissions: ["sales.create", "sales.discount", "sales.credit", "sales.view", "sales.view_all", "sales.cancel", "invoices.view", "invoices.create", "invoices.cancel"] },
+  { label: "Ventes & factures", permissions: ["sales.create", "sales.discount", "sales.credit", "sales.view", "sales.view_all", "sales.cancel", "invoices.view", "invoices.create", "invoices.cancel", "quotes.view", "quotes.create"] },
   { label: "Tiers", permissions: ["customers.view", "customers.create", "customers.edit", "suppliers.view", "suppliers.edit"] },
   { label: "Finances", permissions: ["expenses.view", "expenses.edit"] },
   { label: "Administration", permissions: ["data.export", "users.manage", "settings.manage"] },
@@ -63,14 +65,14 @@ export const DEFAULT_ROLES: { name: string; permissions: Permission[] }[] = [
     name: "Commercial",
     permissions: [
       "dashboard.view", "sales.create", "sales.discount", "sales.credit", "sales.view", "products.view",
-      "customers.view", "customers.create", "customers.edit", "invoices.view", "invoices.create",
+      "customers.view", "customers.create", "customers.edit", "invoices.view", "invoices.create", "quotes.view", "quotes.create",
     ],
   },
   {
     name: "Comptable",
     permissions: [
       "dashboard.view", "reports.view", "reports.profit", "products.view", "products.cost", "sales.view", "sales.view_all",
-      "invoices.view", "customers.view", "suppliers.view", "expenses.view", "expenses.edit", "audit.view", "data.export",
+      "invoices.view", "quotes.view", "customers.view", "suppliers.view", "expenses.view", "expenses.edit", "audit.view", "data.export",
     ],
   },
 ];
@@ -101,6 +103,7 @@ const HOME_PAGES: [Permission, string][] = [
   ["products.view", "/products"],
   ["stock.view", "/stock"],
   ["invoices.view", "/invoices"],
+  ["quotes.view", "/quotes"],
   ["customers.view", "/customers"],
   ["reports.view", "/reports"],
   ["expenses.view", "/expenses"],

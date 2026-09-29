@@ -92,7 +92,7 @@ describe("corriger une facture", () => {
 describe("modules affichés", () => {
   it("enregistre les modules décochés et garde au moins un module", async () => {
     const ctx = await newCompany("Modules Test");
-    expect(await setVisibleModules(ctx, ["pos", "sales", "products", "customers", "reports"])).toEqual(["invoices", "stock", "suppliers", "expenses"]);
+    expect(await setVisibleModules(ctx, ["pos", "sales", "products", "customers", "reports"])).toEqual(["invoices", "quotes", "stock", "suppliers", "expenses"]);
     await expect(setVisibleModules(ctx, [])).rejects.toThrow(/au moins/);
   });
 });

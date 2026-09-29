@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 
-export function ShareInvoice({ url, number, total, phone, email, companyName }: { url: string; number: string; total: string; phone?: string | null; email?: string | null; companyName: string }) {
+/** docLabel : « facture » par défaut, « facture proforma » pour une proforma. */
+export function ShareInvoice({ url, number, total, phone, email, companyName, docLabel = "facture" }: { url: string; number: string; total: string; phone?: string | null; email?: string | null; companyName: string; docLabel?: string }) {
   const [copied, setCopied] = useState(false);
-  const text = `Bonjour, voici votre facture ${number} de ${companyName} (${total}) : ${url}`;
+  const text = `Bonjour, voici votre ${docLabel} ${number} de ${companyName} (${total}) : ${url}`;
   const wa = phone ? phone.replace(/[^\d]/g, "") : "";
   return (
     <div className="space-y-2">
@@ -24,7 +25,7 @@ export function ShareInvoice({ url, number, total, phone, email, companyName }: 
       </div>
       <div className="grid grid-cols-2 gap-2">
         <a className="btn-secondary" target="_blank" rel="noopener noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(text)}`}>WhatsApp</a>
-        <a className="btn-secondary" href={`mailto:${email ?? ""}?subject=${encodeURIComponent(`Facture ${number}`)}&body=${encodeURIComponent(text)}`}>Email</a>
+        <a className="btn-secondary" href={`mailto:${email ?? ""}?subject=${encodeURIComponent(`${docLabel.charAt(0).toUpperCase()}${docLabel.slice(1)} ${number}`)}&body=${encodeURIComponent(text)}`}>Email</a>
       </div>
     </div>
   );

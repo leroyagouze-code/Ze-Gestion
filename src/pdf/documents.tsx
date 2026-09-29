@@ -1,11 +1,12 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
-import type { companies, invoiceItems, invoices, saleItems, sales } from "@/db/schema";
+import type { companies, CustomerSnapshot, invoiceItems, invoices, quoteItems, quotes, saleItems, sales } from "@/db/schema";
 import { formatDate } from "@/lib/dates";
 import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { APP_NAME, APP_PUBLISHER } from "@/lib/brand";
 import { isLightTransparentLogo, readStoredFile } from "@/lib/storage";
+import { PROFORMA_NOTICE } from "@/modules/quotes/labels";
 
 type Company = typeof companies.$inferSelect;
 
@@ -65,15 +66,42 @@ const cols = { desc: "42%", qty: "10%", pu: "16%", disc: "10%", tax: "8%", total
 /** credit : mention « Édité avec ZE Gestion », retirée pour les abonnés (essai et compte gratuit seulement). */
 export type PdfOptions = { credit?: boolean };
 
-export async function invoicePdf(company: Company, invoice: typeof invoices.$inferSelect, items: (typeof invoiceItems.$inferSelect)[], opts: PdfOptions = {}) {
+type DocLine = typeof invoiceItems.$inferSelect | typeof quoteItems.$inferSelect;
+
+/**
+ * Mise en page commune des documents commerciaux A4/A5 (facture, facture proforma) :
+ * en-tête entreprise, bloc client, lignes, totaux. Chaque document fournit son titre et ses mentions.
+ */
+type BillingDoc = {
+  docTitle: string;
+  heading: string;
+  number: string;
+  /** Lignes sous le numéro (dates, révision, mention d'annulation). */
+  meta: React.ReactNode;
+  customer: CustomerSnapshot | null | undefined;
+  customerLabel: string;
+  customerFallback: string;
+  taxMode: string;
+  items: DocLine[];
+  subtotal: number;
+  taxTotal: number;
+  discountTotal: number;
+  total: number;
+  /** Lignes après le Total TTC (payé, reste à payer…). */
+  totalsExtra?: React.ReactNode;
+  /** Mentions sous les totaux (conditions, notes…), avant les coordonnées bancaires. */
+  details: React.ReactNode;
+};
+
+async function billingDocPdf(company: Company, d: BillingDoc, opts: PdfOptions) {
   const credit = opts.credit ?? true;
   const [logo, brand] = await Promise.all([logoSrc(company), brandLogo()]);
   const m = (v: number) => formatMoney(v, company.currency);
-  const c = invoice.customerSnapshot;
+  const c = d.customer;
   const color = company.brandColor || "#0f766e";
   const size = company.invoiceFormat === "A5" ? "A5" : "A4";
   const doc = (
-    <Document title={`Facture ${invoice.number}`} author={company.name}>
+    <Document title={d.docTitle} author={company.name}>
       <Page size={size} style={s.page}>
         <View style={s.between}>
           <View style={{ maxWidth: "55%" }}>
@@ -85,17 +113,15 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
             {company.taxId && <Text>N° fiscal : {company.taxId}</Text>}
           </View>
           <View style={{ alignItems: "flex-end" }}>
-            <Text style={[s.h1, { color }]}>FACTURE</Text>
-            <Text style={s.bold}>{invoice.number}</Text>
-            <Text>Date : {formatDate(invoice.issueDate)}</Text>
-            {invoice.dueDate && <Text>Échéance : {formatDate(invoice.dueDate)}</Text>}
-            {invoice.status === "cancelled" && <Text style={{ color: "#dc2626", marginTop: 4 }}>ANNULÉE</Text>}
+            <Text style={[s.h1, { color }]}>{d.heading}</Text>
+            <Text style={s.bold}>{d.number}</Text>
+            {d.meta}
           </View>
         </View>
 
         <View style={{ marginTop: 20, padding: 10, backgroundColor: "#f1f5f9", borderRadius: 4, width: "50%", alignSelf: "flex-end" }}>
-          <Text style={[s.muted, { marginBottom: 2 }]}>Facturé à</Text>
-          <Text style={s.bold}>{c?.name ?? "Client comptoir"}</Text>
+          <Text style={[s.muted, { marginBottom: 2 }]}>{d.customerLabel}</Text>
+          <Text style={s.bold}>{c?.name ?? d.customerFallback}</Text>
           {c?.companyName && <Text>{c.companyName}</Text>}
           {c?.address && <Text>{c.address}</Text>}
           {c?.phone && <Text>{c.phone}</Text>}
@@ -107,41 +133,36 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
           <View style={[s.row, { backgroundColor: color }]}>
             <Text style={[s.th, { width: cols.desc }]}>Désignation</Text>
             <Text style={[s.th, { width: cols.qty, textAlign: "right" }]}>Qté</Text>
-            <Text style={[s.th, { width: cols.pu, textAlign: "right" }]}>P.U. {priceBasis(invoice.taxMode)}</Text>
+            <Text style={[s.th, { width: cols.pu, textAlign: "right" }]}>P.U. {priceBasis(d.taxMode)}</Text>
             <Text style={[s.th, { width: cols.disc, textAlign: "right" }]}>Remise</Text>
             <Text style={[s.th, { width: cols.tax, textAlign: "right" }]}>TVA</Text>
-            <Text style={[s.th, { width: cols.total, textAlign: "right" }]}>Total {priceBasis(invoice.taxMode)}</Text>
+            <Text style={[s.th, { width: cols.total, textAlign: "right" }]}>Total {priceBasis(d.taxMode)}</Text>
           </View>
-          {items.map((it) => (
+          {d.items.map((it) => (
             <View key={it.id} style={s.row} wrap={false}>
               <Text style={[s.td, { width: cols.desc }]}>{it.description}</Text>
               <Text style={[s.td, { width: cols.qty, textAlign: "right" }]}>{formatQty(it.quantity)}</Text>
               <Text style={[s.td, { width: cols.pu, textAlign: "right" }]}>{m(it.unitPrice)}</Text>
               <Text style={[s.td, { width: cols.disc, textAlign: "right" }]}>{it.discount ? m(it.discount) : "—"}</Text>
               <Text style={[s.td, { width: cols.tax, textAlign: "right" }]}>{formatQty(it.taxRate)} %</Text>
-              <Text style={[s.td, { width: cols.total, textAlign: "right" }]}>{m(shownLineTotal(it, invoice.taxMode))}</Text>
+              <Text style={[s.td, { width: cols.total, textAlign: "right" }]}>{m(shownLineTotal(it, d.taxMode))}</Text>
             </View>
           ))}
         </View>
 
         <View style={{ marginTop: 12, width: "45%", alignSelf: "flex-end" }}>
-          <View style={s.between}><Text>Total HT</Text><Text>{m(invoice.subtotal)}</Text></View>
-          <View style={s.between}><Text>TVA</Text><Text>{m(invoice.taxTotal)}</Text></View>
-          {invoice.discountTotal > 0 && <View style={s.between}><Text>Remises</Text><Text>−{m(invoice.discountTotal)}</Text></View>}
+          <View style={s.between}><Text>Total HT</Text><Text>{m(d.subtotal)}</Text></View>
+          <View style={s.between}><Text>TVA</Text><Text>{m(d.taxTotal)}</Text></View>
+          {d.discountTotal > 0 && <View style={s.between}><Text>Remises</Text><Text>−{m(d.discountTotal)}</Text></View>}
           <View style={[s.between, { marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: color }]}>
             <Text style={[s.bold, { fontSize: 12 }]}>Total TTC</Text>
-            <Text style={[s.bold, { fontSize: 12 }]}>{m(invoice.total)}</Text>
+            <Text style={[s.bold, { fontSize: 12 }]}>{m(d.total)}</Text>
           </View>
-          <View style={s.between}><Text style={s.muted}>Payé</Text><Text style={s.muted}>{m(invoice.paidAmount)}</Text></View>
-          {invoice.total - invoice.paidAmount > 0 && invoice.status !== "cancelled" && (
-            <View style={s.between}><Text style={s.bold}>Reste à payer</Text><Text style={s.bold}>{m(invoice.total - invoice.paidAmount)}</Text></View>
-          )}
+          {d.totalsExtra}
         </View>
 
         <View style={{ marginTop: 18 }}>
-          {invoice.paymentMethodLabel && <Text>Mode de paiement : {invoice.paymentMethodLabel}</Text>}
-          {invoice.paymentTerms && <Text>Conditions de paiement : {invoice.paymentTerms}</Text>}
-          {invoice.notes && <Text style={{ marginTop: 6 }}>{invoice.notes}</Text>}
+          {d.details}
           {company.bankInfo && <Text style={{ marginTop: 6 }}>Coordonnées bancaires : {company.bankInfo}</Text>}
         </View>
 
@@ -158,6 +179,89 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
     </Document>
   );
   return renderToBuffer(doc);
+}
+
+export async function invoicePdf(company: Company, invoice: typeof invoices.$inferSelect, items: (typeof invoiceItems.$inferSelect)[], opts: PdfOptions = {}) {
+  const m = (v: number) => formatMoney(v, company.currency);
+  return billingDocPdf(
+    company,
+    {
+      docTitle: `Facture ${invoice.number}`,
+      heading: "FACTURE",
+      number: invoice.number,
+      meta: (
+        <>
+          <Text>Date : {formatDate(invoice.issueDate)}</Text>
+          {invoice.dueDate && <Text>Échéance : {formatDate(invoice.dueDate)}</Text>}
+          {invoice.status === "cancelled" && <Text style={{ color: "#dc2626", marginTop: 4 }}>ANNULÉE</Text>}
+        </>
+      ),
+      customer: invoice.customerSnapshot,
+      customerLabel: "Facturé à",
+      customerFallback: "Client comptoir",
+      taxMode: invoice.taxMode,
+      items,
+      subtotal: invoice.subtotal,
+      taxTotal: invoice.taxTotal,
+      discountTotal: invoice.discountTotal,
+      total: invoice.total,
+      totalsExtra: (
+        <>
+          <View style={s.between}><Text style={s.muted}>Payé</Text><Text style={s.muted}>{m(invoice.paidAmount)}</Text></View>
+          {invoice.total - invoice.paidAmount > 0 && invoice.status !== "cancelled" && (
+            <View style={s.between}><Text style={s.bold}>Reste à payer</Text><Text style={s.bold}>{m(invoice.total - invoice.paidAmount)}</Text></View>
+          )}
+        </>
+      ),
+      details: (
+        <>
+          {invoice.paymentMethodLabel && <Text>Mode de paiement : {invoice.paymentMethodLabel}</Text>}
+          {invoice.paymentTerms && <Text>Conditions de paiement : {invoice.paymentTerms}</Text>}
+          {invoice.notes && <Text style={{ marginTop: 6 }}>{invoice.notes}</Text>}
+        </>
+      ),
+    },
+    opts,
+  );
+}
+
+
+export async function quotePdf(company: Company, quote: typeof quotes.$inferSelect, items: (typeof quoteItems.$inferSelect)[], opts: PdfOptions = {}) {
+  return billingDocPdf(
+    company,
+    {
+      docTitle: `Facture proforma ${quote.number}`,
+      heading: "FACTURE PROFORMA",
+      number: quote.number,
+      meta: (
+        <>
+          {quote.revision > 1 && <Text style={s.bold}>Révision {quote.revision}</Text>}
+          <Text>Date : {formatDate(quote.issueDate)}</Text>
+          <Text>Valable jusqu&apos;au : {formatDate(quote.validUntil)}</Text>
+          {quote.status === "converted" && <Text style={{ color: "#059669", marginTop: 4 }}>CONVERTIE EN FACTURE</Text>}
+          {quote.status === "refused" && <Text style={{ color: "#dc2626", marginTop: 4 }}>REFUSÉE</Text>}
+        </>
+      ),
+      customer: quote.customerSnapshot,
+      customerLabel: "Destinataire",
+      customerFallback: "—",
+      taxMode: quote.taxMode,
+      items,
+      subtotal: quote.subtotal,
+      taxTotal: quote.taxTotal,
+      discountTotal: quote.discountTotal,
+      total: quote.total,
+      details: (
+        <>
+          <Text>Offre valable jusqu&apos;au {formatDate(quote.validUntil)}.</Text>
+          {quote.conditions && <Text>Conditions : {quote.conditions}</Text>}
+          {quote.notes && <Text style={{ marginTop: 6 }}>{quote.notes}</Text>}
+          <Text style={[s.muted, { marginTop: 8, fontSize: 8.5 }]}>{PROFORMA_NOTICE}</Text>
+        </>
+      ),
+    },
+    opts,
+  );
 }
 
 /** Ticket de caisse 58/80 mm (hauteur calculée selon le nombre de lignes). */

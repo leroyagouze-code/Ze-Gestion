@@ -13,6 +13,7 @@ const NAV: (NavItem & { perm?: Permission })[] = [
   { href: "/pos", label: "Caisse", icon: "pos", perm: "sales.create" },
   { href: "/sales", label: "Ventes", icon: "sales", perm: "sales.view" },
   { href: "/invoices", label: "Factures", icon: "invoices", perm: "invoices.view" },
+  { href: "/quotes", label: "Proformas", icon: "quotes", perm: "quotes.view" },
   { href: "/products", label: "Produits", icon: "products", perm: "products.view" },
   { href: "/stock", label: "Stock", icon: "stock", perm: "stock.view" },
   { href: "/customers", label: "Clients", icon: "customers", perm: "customers.view" },
