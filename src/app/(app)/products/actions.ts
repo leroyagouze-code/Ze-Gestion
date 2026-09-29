@@ -63,7 +63,7 @@ export async function importProductsAction(_: ActionState, fd: FormData): Promis
     const r = await importProducts(ctx, parsed.data);
     revalidatePath("/products");
     const errs = r.errors.slice(0, 10).map((e) => `ligne ${e.line} : ${e.message}`).join(" | ");
-    return { ok: `${r.created} produit(s) créé(s), ${r.updated} mis à jour, ${r.errors.length} erreur(s). ${errs}` };
+    return { ok: `${r.created} créés, ${r.updated} mis à jour, ${r.skipped} ignorés.${errs ? ` ${errs}` : ""}` };
   } catch (e) {
     return { error: errorMessage(e) };
   }
