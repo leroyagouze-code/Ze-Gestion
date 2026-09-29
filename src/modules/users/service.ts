@@ -6,6 +6,7 @@ import { assertOwned } from "@/db/owned";
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { hashPassword } from "@/lib/auth/password";
+import { mailEnabled } from "@/lib/mail";
 import { deleteUserSessions, newToken } from "@/lib/auth/session";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
@@ -100,7 +101,8 @@ export async function addMember(ctx: AppContext, raw: z.input<typeof newUserSche
     assertCanGrant(ctx, role);
     const [u] = await tx
       .insert(users)
-      .values({ email: input.email, fullName: input.fullName, phone: input.phone ?? null, passwordHash, mustChangePassword: true })
+      // Adresse à confirmer par code à la première connexion (si les emails sont configurés)
+      .values({ email: input.email, fullName: input.fullName, phone: input.phone ?? null, passwordHash, mustChangePassword: true, emailVerifiedAt: mailEnabled() ? null : new Date() })
       .returning({ id: users.id });
     const userId = u.id;
     await tx.insert(memberships).values({ companyId: ctx.companyId, userId, roleId: input.roleId, storeId: input.storeId ?? null });

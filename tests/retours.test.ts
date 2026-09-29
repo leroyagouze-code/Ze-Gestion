@@ -43,7 +43,7 @@ describe("TVA ligne par ligne ou sur le total HT", () => {
     expect(t.taxTotal).toBe(180);
     expect(t.total).toBe(2180);
     expect(t.lines.reduce((s, l) => s + l.taxAmount, 0)).toBeCloseTo(180, 2);
-    expect(t.lines[3]).toEqual({ lineTotal: 1000, taxAmount: 0, net: 1000 });
+    expect(t.lines[3]).toMatchObject({ lineTotal: 1000, taxAmount: 0, net: 1000 });
   });
 
   it("remise globale en mode HT : la TVA porte sur le HT après remise", () => {

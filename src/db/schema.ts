@@ -14,6 +14,7 @@ import {
   primaryKey,
   pgEnum,
   type AnyPgColumn,
+  check,
 } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().defaultRandom();
@@ -159,11 +160,49 @@ export const licenseOrders = pgTable(
     failureReason: text("failure_reason"),
     licenseIssueId: uuid("license_issue_id").references(() => licenseIssues.id, { onDelete: "set null" }),
     code: text("code"),
+    /** Code promo utilisé : amount est le prix payé, listAmount le tarif avant réduction. */
+    promoCodeId: uuid("promo_code_id").references(() => platformPromoCodes.id, { onDelete: "set null" }),
+    promoCode: text("promo_code"),
+    listAmount: money("list_amount"),
+    discountAmount: money("discount_amount").notNull().default(0),
     checkedAt: timestamp("checked_at", { withTimezone: true }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index("license_orders_install_idx").on(t.installId, t.createdAt), index("license_orders_status_idx").on(t.status, t.createdAt)],
+);
+
+/**
+ * Codes promo de la plateforme (super admin) : réductions sur les achats de licence en ligne
+ * et sur les paiements d'abonnement. Code stocké en majuscules, unique sans tenir compte de la casse.
+ * used_count est incrémenté dans la même requête que la vérification du plafond (pas de dépassement
+ * sous concurrence) ; la contrainte CHECK sert de garde-fou.
+ */
+export const platformPromoCodes = pgTable(
+  "platform_promo_codes",
+  {
+    id: id(),
+    code: text("code").notNull(),
+    description: text("description"),
+    kind: text("kind").notNull(), // "percent" | "amount"
+    value: money("value").notNull(),
+    /** "all", "license" (achats de licence) ou "subscription" (paiements d'abonnement). */
+    scope: text("scope").notNull().default("all"),
+    /** Formules concernées (codes BASIC, PRO…) ; vide = toutes. */
+    plans: text("plans").array().notNull().default(sql`'{}'::text[]`),
+    startsOn: date("starts_on"),
+    endsOn: date("ends_on"),
+    maxUses: integer("max_uses"),
+    usedCount: integer("used_count").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("platform_promo_codes_code_uq").on(sql`upper(${t.code})`),
+    check("platform_promo_codes_uses_ck", sql`${t.usedCount} >= 0 and (${t.maxUses} is null or ${t.usedCount} <= ${t.maxUses})`),
+  ],
 );
 
 /**
@@ -201,6 +240,9 @@ export const subscriptionPayments = pgTable(
     months: integer("months").notNull(),
     periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
     periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+    promoCodeId: uuid("promo_code_id").references(() => platformPromoCodes.id, { onDelete: "set null" }),
+    promoCode: text("promo_code"),
+    discountAmount: money("discount_amount").notNull().default(0),
     recordedBy: uuid("recorded_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
@@ -216,6 +258,8 @@ export const users = pgTable("users", {
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   mustChangePassword: boolean("must_change_password").notNull().default(false),
   passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
+  // Adresse confirmée par un code reçu par email ; nul = à vérifier (seulement si l'envoi d'emails est configuré)
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -241,6 +285,27 @@ export const loginAttempts = pgTable("login_attempts", {
   count: integer("count").notNull().default(0),
   windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Codes à 6 chiffres envoyés par email (vérification de l'adresse, mot de passe oublié).
+ * Seule l'empreinte est stockée ; table hors entreprise (comme users/sessions), donc sans RLS.
+ */
+export const emailCodes = pgTable(
+  "email_codes",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(), // verify_email | reset_password
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("email_codes_user_purpose_idx").on(t.userId, t.purpose, t.createdAt)],
+);
 
 export const auditLogs = pgTable(
   "audit_logs",
@@ -542,6 +607,7 @@ export const stockMovements = pgTable(
     quantity: qty("quantity").notNull(), // signée : + entrée, - sortie
     quantityAfter: qty("quantity_after").notNull(),
     unitCost: money("unit_cost"),
+    supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
     reason: text("reason"),
     referenceType: text("reference_type"),
     referenceId: uuid("reference_id"),
@@ -577,6 +643,35 @@ export const customers = pgTable(
   ],
 );
 
+/**
+ * Codes promo d'une entreprise, saisis en caisse pour ses propres clients : réduction appliquée
+ * comme remise globale de la vente. Code en majuscules, unique par entreprise.
+ */
+export const promoCodes = pgTable(
+  "promo_codes",
+  {
+    id: id(),
+    companyId: companyId(),
+    code: text("code").notNull(),
+    description: text("description"),
+    kind: text("kind").notNull(), // "percent" | "amount"
+    value: money("value").notNull(),
+    /** Montant d'achat minimum (après remises de ligne), facultatif. */
+    minPurchase: money("min_purchase"),
+    startsOn: date("starts_on"),
+    endsOn: date("ends_on"),
+    maxUses: integer("max_uses"),
+    usedCount: integer("used_count").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("promo_codes_company_code_uq").on(t.companyId, sql`upper(${t.code})`),
+    check("promo_codes_uses_ck", sql`${t.usedCount} >= 0 and (${t.maxUses} is null or ${t.usedCount} <= ${t.maxUses})`),
+  ],
+);
+
 export const saleStatus = pgEnum("sale_status", ["completed", "cancelled"]);
 
 export const sales = pgTable(
@@ -603,6 +698,10 @@ export const sales = pgTable(
     paidAmount: money("paid_amount").notNull().default(0),
     dueAmount: money("due_amount").notNull().default(0),
     notes: text("notes"),
+    /** Code promo de l'entreprise appliqué à la vente (sa réduction est comprise dans la remise globale). */
+    promoCodeId: uuid("promo_code_id").references(() => promoCodes.id, { onDelete: "set null" }),
+    promoCode: text("promo_code"),
+    promoDiscount: money("promo_discount").notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [
@@ -768,4 +867,5 @@ export const TENANT_TABLES = [
   "expenses",
   "registers",
   "cash_sessions",
+  "promo_codes",
 ] as const;

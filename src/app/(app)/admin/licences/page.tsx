@@ -33,7 +33,12 @@ export default async function LicencesPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="Licences du logiciel Windows"
         subtitle="Ventes en ligne, tarifs, et codes créés à la main pour les clients qui paient autrement."
-        actions={<Link href="/admin" className="btn-secondary">Retour</Link>}
+        actions={
+          <>
+            <Link href="/admin/codes-promo" className="btn-secondary">Codes promo</Link>
+            <Link href="/admin" className="btn-secondary">Retour</Link>
+          </>
+        }
       />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card title="Vente en ligne" className="xl:col-span-2">
@@ -76,7 +81,10 @@ export default async function LicencesPage({ searchParams }: { searchParams: Pro
                         </td>
                         <td className="font-mono">{o.installId}</td>
                         <td className="whitespace-nowrap">{o.plan} · {LICENSE_DURATIONS[o.duration as keyof typeof LICENSE_DURATIONS]}</td>
-                        <td className="text-right tabular-nums">{formatMoney(o.amount, o.currency)}</td>
+                        <td className="text-right tabular-nums">
+                          {formatMoney(o.amount, o.currency)}
+                          {o.promoCode && <div className="text-xs text-emerald-700">{o.promoCode} −{formatMoney(o.discountAmount, o.currency)}</div>}
+                        </td>
                         <td className="whitespace-nowrap text-xs">
                           {o.provider === "simulation" ? "Test" : o.network ? NETWORKS[o.network as keyof typeof NETWORKS] : "PayGate"}
                           <div className="text-slate-500">{o.reference}{o.paymentRef ? ` · ${o.paymentRef}` : ""}</div>

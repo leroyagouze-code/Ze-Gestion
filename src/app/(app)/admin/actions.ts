@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth/server";
 import { formatDate } from "@/lib/dates";
 import { issueLicense } from "@/modules/billing/license";
 import { savePrice } from "@/modules/billing/license-orders";
+import { deletePlatformPromo, savePlatformPromo, setPlatformPromoActive } from "@/modules/billing/platform-promos";
 import { grantFreeAccess, extendTrial, recordSubscriptionPayment, setCompanyPlan, setCompanyStatus, setUnlimited } from "@/modules/admin/service";
 
 async function admin() {
@@ -93,5 +94,33 @@ export async function savePriceAction(_s: ActionState, fd: FormData): Promise<Ac
     await savePrice(s, Object.fromEntries(fd));
     revalidatePath("/admin/licences");
     return "Tarif enregistré";
+  });
+}
+
+/* ─────────── Codes promo de la plateforme ─────────── */
+
+export async function savePlatformPromoAction(id: string | null, _s: ActionState, fd: FormData): Promise<ActionState> {
+  const s = await admin();
+  const res = await runAction(async () => {
+    const row = await savePlatformPromo(s, id, { ...Object.fromEntries(fd), plans: fd.getAll("plans").map(String) });
+    revalidatePath("/admin/codes-promo");
+    return id ? `Code ${row.code} modifié` : `Code ${row.code} créé`;
+  });
+  if (id && res?.ok) redirect("/admin/codes-promo");
+  return res;
+}
+
+export async function togglePlatformPromoAction(id: string, isActive: boolean) {
+  const s = await admin();
+  await setPlatformPromoActive(s, id, isActive);
+  revalidatePath("/admin/codes-promo");
+}
+
+export async function deletePlatformPromoAction(id: string, _s: ActionState): Promise<ActionState> {
+  const s = await admin();
+  return runAction(async () => {
+    await deletePlatformPromo(s, id);
+    revalidatePath("/admin/codes-promo");
+    return "Code supprimé";
   });
 }

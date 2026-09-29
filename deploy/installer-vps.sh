@@ -120,6 +120,7 @@ EOF
   1. Ouvrez https://$DOMAIN/signup et créez votre entreprise.
   2. Donnez-vous les droits super admin :   ze-gestion admin votre@email.com
   3. Pour vendre des licences Windows, ajoutez LICENSE_PRIVATE_KEY :   ze-gestion config
+  4. Pour envoyer les codes par email (noreply@zegroupafrica.com), ajoutez SMTP_PASSWORD :   ze-gestion config
 
 Les mots de passe sont dans $DIR/deploy/.env : gardez-en une copie hors du serveur
 (sans BACKUP_PASSPHRASE, les sauvegardes sont illisibles).

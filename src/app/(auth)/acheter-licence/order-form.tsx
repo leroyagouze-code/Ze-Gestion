@@ -1,18 +1,21 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { SubmitButton } from "@/components/action-form";
 import type { ActionState } from "@/lib/actions";
 
 type Offer = { value: string; plan: string; duration: string; amount: string; perMonth: string | null };
+type Preview = { ok: true; code: string; list: string; discount: string; amount: string } | { ok: false; error: string };
 
 export function OrderForm({
   action,
+  previewAction,
   offers,
   plans,
   installId,
 }: {
   action: (s: ActionState, fd: FormData) => Promise<ActionState>;
+  previewAction: (code: string, offer: string) => Promise<Preview>;
   offers: Offer[];
   plans: { code: string; name: string; features: string }[];
   installId: string;
@@ -27,6 +30,23 @@ export function OrderForm({
     setOffer((cur) => next.find((o) => o.duration === cur?.split(":")[1])?.value ?? next[0]?.value);
   };
   const chosen = offers.find((o) => o.value === offer);
+  const [promo, setPromo] = useState("");
+  const [applied, setApplied] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [checking, startCheck] = useTransition();
+  const check = (code: string) => {
+    if (!code.trim() || !offer) return;
+    startCheck(async () => {
+      const res = await previewAction(code, offer);
+      setPreview(res);
+      setApplied(res.ok ? code : null);
+    });
+  };
+  // Le prix réduit dépend de la formule choisie : on le recalcule quand elle change
+  useEffect(() => {
+    if (applied) check(applied);
+  }, [offer]);
+  const discounted = preview?.ok && applied ? preview : null;
   return (
     <form action={formAction} className="space-y-5">
       {state?.error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</div>}
@@ -74,6 +94,39 @@ export function OrderForm({
         </div>
       </fieldset>
 
+      <div>
+        <label className="label" htmlFor="promoCode">Code promo (facultatif)</label>
+        <div className="flex gap-2">
+          <input
+            id="promoCode"
+            name="promoCode"
+            value={promo}
+            onChange={(e) => {
+              setPromo(e.target.value);
+              setApplied(null);
+              setPreview(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                check(promo);
+              }
+            }}
+            className="input font-mono uppercase"
+            autoComplete="off"
+          />
+          <button type="button" className="btn-secondary whitespace-nowrap" disabled={!promo.trim() || checking} onClick={() => check(promo)}>
+            {checking ? "…" : "Appliquer"}
+          </button>
+        </div>
+        {preview && !preview.ok && <p className="mt-1 text-xs text-red-700">{preview.error}</p>}
+        {discounted && (
+          <p className="mt-1 text-sm text-emerald-700">
+            Code {discounted.code} : <s className="text-slate-500">{discounted.list}</s> <b>{discounted.amount}</b> (−{discounted.discount})
+          </p>
+        )}
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="customerName">Nom ou commerce</label>
@@ -103,7 +156,7 @@ export function OrderForm({
       </div>
 
       <SubmitButton className="btn-primary w-full" pendingText="Envoi de la demande…">
-        {chosen ? `Payer ${chosen.amount}` : "Payer"}
+        {discounted ? `Payer ${discounted.amount}` : chosen ? `Payer ${chosen.amount}` : "Payer"}
       </SubmitButton>
     </form>
   );

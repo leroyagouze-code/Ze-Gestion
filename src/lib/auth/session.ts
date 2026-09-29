@@ -46,6 +46,7 @@ export async function validateSessionToken(token: string) {
       fullName: users.fullName,
       isSuperAdmin: users.isSuperAdmin,
       mustChangePassword: users.mustChangePassword,
+      emailVerifiedAt: users.emailVerifiedAt,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))

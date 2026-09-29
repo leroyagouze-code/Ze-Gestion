@@ -77,6 +77,24 @@ docker compose -f deploy/docker-compose.prod.yml exec db \
 
 Le menu « Super admin » apparaît à la connexion suivante.
 
+## Emails (codes de vérification et mot de passe oublié)
+
+L'application envoie des codes à 6 chiffres depuis `noreply@zegroupafrica.com` : confirmation de l'adresse à l'inscription (et à la première connexion d'un employé créé dans Utilisateurs), et réinitialisation du mot de passe (`/mot-de-passe-oublie`). Tant que `SMTP_PASSWORD` est vide, rien n'est envoyé : les comptes ne sont pas vérifiés et le mot de passe oublié renvoie vers l'administrateur de l'entreprise. Le logiciel Windows n'envoie jamais d'emails.
+
+1. **Créer la boîte chez LWS** : espace client LWS > votre domaine `zegroupafrica.com` > **Adresses email** (ou « Mail ») > **Créer une adresse** : `noreply`, avec un mot de passe long (`openssl rand -hex 16`). Un quota minimal suffit : la boîte ne fait qu'envoyer.
+2. **Vérifier les réglages SMTP** affichés par LWS pour cette adresse (en général serveur `mail.zegroupafrica.com`, port `465`, SSL). S'ils diffèrent, ajustez `SMTP_HOST`, `SMTP_PORT` (587 avec `SMTP_SECURE=false` pour STARTTLS) dans `deploy/.env`.
+3. **Donner le mot de passe à l'application** :
+
+   ```bash
+   ze-gestion config        # ouvre deploy/.env ; renseigner SMTP_PASSWORD=..., enregistrer (Ctrl+O, Entrée, Ctrl+X)
+   ```
+
+   La commande redémarre l'application avec la nouvelle configuration.
+4. **Tester** : ouvrez `https://VOTRE-DOMAINE/mot-de-passe-oublie`, saisissez votre email : le code doit arriver en moins d'une minute. Sinon, `ze-gestion journaux` affiche l'erreur (`[email] échec de l'envoi…`, souvent un mot de passe erroné).
+5. **Éviter les courriers indésirables** : dans la zone DNS du domaine chez LWS, vérifiez que l'enregistrement SPF (`v=spf1 … include:… ~all`) et la signature DKIM proposés par LWS sont actifs.
+
+Les comptes qui existaient avant cette fonction sont considérés comme vérifiés. En développement, `MAIL_TRANSPORT=console` (sans `SMTP_PASSWORD`) active les codes et les écrit dans la console du serveur au lieu de les envoyer.
+
 ## Mettre à jour
 
 ```bash

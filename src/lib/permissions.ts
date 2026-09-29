@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   "invoices.view": "Consulter les factures",
   "invoices.create": "Créer des factures",
   "invoices.cancel": "Annuler une facture",
+  "promos.manage": "Gérer les codes promo",
   "customers.view": "Consulter les clients",
   "customers.create": "Ajouter des clients",
   "customers.edit": "Modifier les clients",
@@ -37,7 +38,7 @@ export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
   { label: "Général", permissions: ["dashboard.view", "reports.view", "reports.profit", "audit.view"] },
   { label: "Produits & stock", permissions: ["products.view", "products.edit", "products.delete", "products.cost", "stock.view", "stock.adjust"] },
-  { label: "Ventes & factures", permissions: ["sales.create", "sales.discount", "sales.credit", "sales.view", "sales.view_all", "sales.cancel", "invoices.view", "invoices.create", "invoices.cancel"] },
+  { label: "Ventes & factures", permissions: ["sales.create", "sales.discount", "sales.credit", "sales.view", "sales.view_all", "sales.cancel", "invoices.view", "invoices.create", "invoices.cancel", "promos.manage"] },
   { label: "Tiers", permissions: ["customers.view", "customers.create", "customers.edit", "suppliers.view", "suppliers.edit"] },
   { label: "Finances", permissions: ["expenses.view", "expenses.edit"] },
   { label: "Administration", permissions: ["data.export", "users.manage", "settings.manage", "registers.manage"] },

@@ -75,6 +75,8 @@ export async function salesReport(ctx: AppContext, range: { from: Date; to: Date
       .groupBy(paymentMethods.label)
       .orderBy(desc(sql`sum(${payments.amount})`));
 
+    // lineTotal et taxAmount des lignes intègrent la part de remise globale (computeTotals) : base et TVA par taux justes.
+    // Les documents plus anciens restent tels qu'ils ont été enregistrés.
     type TaxRow = { rate: number; base: number; tax: number };
     const byTax = (
       await tx.execute(sql`

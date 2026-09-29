@@ -1,7 +1,7 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import type { companies, invoiceItems, invoices, saleItems, sales } from "@/db/schema";
 import { formatDate } from "@/lib/dates";
-import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis, shownLineTotal, vatDetail } from "@/lib/money";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { APP_NAME, APP_PUBLISHER } from "@/lib/brand";
@@ -119,7 +119,7 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
               <Text style={[s.td, { width: cols.pu, textAlign: "right" }]}>{m(it.unitPrice)}</Text>
               <Text style={[s.td, { width: cols.disc, textAlign: "right" }]}>{it.discount ? m(it.discount) : "—"}</Text>
               <Text style={[s.td, { width: cols.tax, textAlign: "right" }]}>{formatQty(it.taxRate)} %</Text>
-              <Text style={[s.td, { width: cols.total, textAlign: "right" }]}>{m(shownLineTotal(it, invoice.taxMode))}</Text>
+              <Text style={[s.td, { width: cols.total, textAlign: "right" }]}>{m(shownLineTotal(it))}</Text>
             </View>
           ))}
         </View>
@@ -127,6 +127,9 @@ export async function invoicePdf(company: Company, invoice: typeof invoices.$inf
         <View style={{ marginTop: 12, width: "45%", alignSelf: "flex-end" }}>
           <View style={s.between}><Text>Total HT</Text><Text>{m(invoice.subtotal)}</Text></View>
           <View style={s.between}><Text>TVA</Text><Text>{m(invoice.taxTotal)}</Text></View>
+          {vatDetail(items, invoice, company.currency).map((v) => (
+            <View key={v.rate} style={s.between}><Text style={s.muted}>  dont TVA {formatQty(v.rate)} % sur {m(v.base)}</Text><Text style={s.muted}>{m(v.tax)}</Text></View>
+          ))}
           {invoice.discountTotal > 0 && <View style={s.between}><Text>Remises</Text><Text>−{m(invoice.discountTotal)}</Text></View>}
           <View style={[s.between, { marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: color }]}>
             <Text style={[s.bold, { fontSize: 12 }]}>Total TTC</Text>
@@ -173,7 +176,8 @@ export async function receiptPdf(
   const logo = await logoSrc(company);
   const m = (v: number) => formatMoney(v, company.currency);
   const width = company.receiptFormat === "58mm" ? 164 : 226; // points (1 mm ≈ 2.83 pt)
-  const height = 190 + items.length * 24 + pays.length * 11 + (logo ? 50 : 0) + (extra.customer ? 10 : 0);
+  const vat = vatDetail(items, sale, company.currency);
+  const height = 190 + items.length * 24 + (pays.length + vat.length) * 11 + (logo ? 50 : 0) + (extra.customer ? 10 : 0);
   const t = StyleSheet.create({ p: { padding: 8, fontSize: 7.5, fontFamily: "Helvetica" }, c: { textAlign: "center" }, line: { borderBottomWidth: 0.5, borderBottomStyle: "dashed", borderBottomColor: "#000", marginVertical: 4 } });
   const doc = (
     <Document title={`Ticket ${sale.number}`}>
@@ -195,13 +199,16 @@ export async function receiptPdf(
             <Text>{it.name}</Text>
             <View style={s.between}>
               <Text>{formatQty(it.quantity)} × {m(it.unitPrice)}{it.discount ? ` − ${m(it.discount)}` : ""}</Text>
-              <Text>{m(shownLineTotal(it, sale.taxMode))}</Text>
+              <Text>{m(shownLineTotal(it))}</Text>
             </View>
           </View>
         ))}
         <View style={t.line} />
         <View style={s.between}><Text>Total HT</Text><Text>{m(sale.subtotal)}</Text></View>
         <View style={s.between}><Text>TVA</Text><Text>{m(sale.taxTotal)}</Text></View>
+        {vat.map((v) => (
+          <View key={v.rate} style={s.between}><Text>  dont {formatQty(v.rate)} % sur {m(v.base)}</Text><Text>{m(v.tax)}</Text></View>
+        ))}
         {sale.discountTotal > 0 && <View style={s.between}><Text>Remises</Text><Text>−{m(sale.discountTotal)}</Text></View>}
         <View style={[s.between, { marginTop: 2 }]}><Text style={[s.bold, { fontSize: 10 }]}>TOTAL</Text><Text style={[s.bold, { fontSize: 10 }]}>{m(sale.total)}</Text></View>
         {pays.map((p, i) => (

@@ -31,7 +31,7 @@ async function main() {
     address: "Boulevard du 13 Janvier",
     city: "Lomé",
   });
-  await db.update(users).set({ isSuperAdmin: true }).where(eq(users.id, res.userId));
+  await db.update(users).set({ isSuperAdmin: true, emailVerifiedAt: new Date() }).where(eq(users.id, res.userId));
   const ctx = (await loadContext({ userId: res.userId, fullName: "Koffi Démo", email, isSuperAdmin: true }, res.companyId))!;
 
   const sup = await createSupplier(ctx, { name: "Grossiste Adjamé", phone: "+228 91 11 11 11" });
