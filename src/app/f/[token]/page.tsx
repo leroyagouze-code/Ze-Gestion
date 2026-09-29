@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { formatDate } from "@/lib/dates";
-import { formatMoney, formatQty, priceBasis, shownLineTotal } from "@/lib/money";
+import { formatMoney, formatQty, priceBasis, shownLineTotal, vatDetail } from "@/lib/money";
 import { INVOICE_STATUS } from "@/modules/invoices/labels";
 import { getPublicInvoice } from "@/modules/invoices/service";
 
@@ -45,7 +45,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
               </thead>
               <tbody>
                 {items.map((it) => (
-                  <tr key={it.id}><td>{it.description}</td><td className="text-right">{formatQty(it.quantity)}</td><td className="text-right">{m(it.unitPrice)}</td><td className="text-right">{m(shownLineTotal(it, inv.taxMode))}</td></tr>
+                  <tr key={it.id}><td>{it.description}</td><td className="text-right">{formatQty(it.quantity)}</td><td className="text-right">{m(it.unitPrice)}</td><td className="text-right">{m(shownLineTotal(it))}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -53,6 +53,9 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
           <div className="ml-auto mt-4 max-w-xs space-y-1 text-sm">
             <div className="flex justify-between"><span>Total HT</span><span>{m(inv.subtotal)}</span></div>
             <div className="flex justify-between"><span>TVA</span><span>{m(inv.taxTotal)}</span></div>
+            {vatDetail(items, inv, co.currency).map((v) => (
+              <div key={v.rate} className="flex justify-between text-slate-500"><span>dont {formatQty(v.rate)} % sur {m(v.base)}</span><span>{m(v.tax)}</span></div>
+            ))}
             <div className="flex justify-between text-base font-semibold"><span>Total TTC</span><span>{m(inv.total)}</span></div>
             {inv.status !== "cancelled" && inv.total > inv.paidAmount && <div className="flex justify-between font-medium text-amber-700"><span>Reste à payer</span><span>{m(inv.total - inv.paidAmount)}</span></div>}
           </div>
