@@ -6,7 +6,7 @@ import { licenseIssues, licenseOrders, licensePrices } from "@/db/schema";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { createLicense, LICENSE_PLANS, normalizeCode, type LicensePlan } from "@/lib/license";
 import { LICENSE_DURATIONS, licenseEnd } from "@/modules/billing/license";
-import { quotePlatformPromo, releasePlatformPromo, reservePlatformPromo } from "@/modules/billing/platform-promos";
+import { PUBLIC_INVALID, quotePublicPromo, releasePlatformPromo, reservePlatformPromo } from "@/modules/billing/platform-promos";
 import { localPhone, NETWORKS, paygateStatus, paymentMode, requestPaygatePayment, type Network } from "@/modules/billing/paygate";
 
 /**
@@ -98,10 +98,10 @@ async function activePrice(offer: string) {
 }
 
 /** Aperçu du prix avec un code promo sur la page d'achat (le prix payé est recalculé à la commande). */
-export async function previewPromo(rawCode: string, offer: string) {
+export async function previewPromo(rawCode: string, offer: string, meta: { ip?: string | null } = {}) {
   if (!/^[A-Z]+:[a-z0-9]+$/.test(offer)) throw new BusinessError("Choisissez une formule");
   const price = await activePrice(offer);
-  const q = await quotePlatformPromo(rawCode, { target: "license", plan: price.plan, amount: price.amount });
+  const q = await quotePublicPromo(rawCode, { target: "license", plan: price.plan, amount: price.amount }, meta.ip);
   return { code: q.promo.code, listAmount: price.amount, discount: q.discount, amount: q.amount, currency: price.currency };
 }
 
@@ -126,14 +126,14 @@ function newReference() {
   return "ZL" + Array.from(randomBytes(8), (b) => A[b & 31]).join("");
 }
 
-export async function createOrder(raw: unknown) {
+export async function createOrder(raw: unknown, meta: { ip?: string | null } = {}) {
   const mode = paymentMode();
   if (!mode) throw new BusinessError("La vente en ligne n'est pas encore ouverte. Contactez ZE GROUP.");
   if (!process.env.LICENSE_PRIVATE_KEY) throw new BusinessError("La vente en ligne n'est pas configurée sur ce serveur (clé des licences absente).");
   const input = orderSchema.parse(raw);
   const price = await activePrice(input.offer);
   // Prix payé calculé ici, depuis le tarif en base : le navigateur n'envoie que le code
-  const quote = input.promoCode ? await quotePlatformPromo(input.promoCode, { target: "license", plan: price.plan, amount: price.amount }) : null;
+  const quote = input.promoCode ? await quotePublicPromo(input.promoCode, { target: "license", plan: price.plan, amount: price.amount }, meta.ip) : null;
   const amount = quote ? quote.amount : price.amount;
   const installId = formatInstall(input.installId);
   // Limite simple contre les abus : 5 commandes par poste et par heure
@@ -146,7 +146,7 @@ export async function createOrder(raw: unknown) {
   const reference = newReference();
   const order = await db.transaction(async (tx) => {
     // L'utilisation du code est réservée à la commande (rendue si le paiement échoue)
-    if (quote) await reservePlatformPromo(tx, quote.promo.id);
+    if (quote) await reservePlatformPromo(tx, quote.promo.id).catch(() => Promise.reject(new BusinessError(PUBLIC_INVALID)));
     const [o] = await tx
       .insert(licenseOrders)
       .values({

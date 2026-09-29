@@ -55,6 +55,8 @@ export const LIMITS = {
   account: { max: 20, windowMs: HOUR },
   ip: { max: 50, windowMs: 15 * 60_000 },
   signup: { max: 5, windowMs: HOUR },
+  /** Vérifications de code promo sur la page publique d'achat (aperçu et commande), par IP : empêche de deviner les codes. */
+  promoCheck: { max: 20, windowMs: 15 * 60_000 },
 } as const;
 
 let _dummy: Promise<string> | null = null;

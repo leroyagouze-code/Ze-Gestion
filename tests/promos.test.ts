@@ -175,8 +175,8 @@ describe("codes promo de la plateforme", () => {
     await simulatePayment(ref, "paid");
     expect(await usedCount(p.id)).toBe(1);
 
-    // formule non concernée
-    await expect(createOrder(order(p.code, "BASIC:12"))).rejects.toThrow(/réservé à la formule PRO/);
+    // formule non concernée : même réponse qu'un code inconnu
+    await expect(createOrder(order(p.code, "BASIC:12"))).rejects.toThrow(/^Code promo invalide$/);
     await expect(deletePlatformPromo(admin, p.id)).rejects.toThrow(/désactivez/);
   });
 
@@ -191,22 +191,36 @@ describe("codes promo de la plateforme", () => {
     const results = await Promise.allSettled(Array.from({ length: 6 }, () => createOrder(order(p.code))));
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
     expect(await usedCount(p.id)).toBe(2);
-    await expect(createOrder(order(p.code))).rejects.toThrow(/maximal/);
+    await expect(createOrder(order(p.code))).rejects.toThrow(/^Code promo invalide$/);
   });
 
   it("refuse un code expiré, d'abonnement seulement, ou désactivé ; jamais sous le minimum payable", async () => {
     const expired = await savePlatformPromo(admin, null, { ...code({ endsOn: day(-1) }) });
-    await expect(createOrder(order(expired.code))).rejects.toThrow(/expiré/);
     const subsOnly = await savePlatformPromo(admin, null, { ...code(), scope: "subscription" });
-    await expect(createOrder(order(subsOnly.code))).rejects.toThrow(/licences/);
-    await expect(createOrder(order("INCONNU-" + uniq("")))).rejects.toThrow(/inconnu/);
     const off = await savePlatformPromo(admin, null, { ...code({ isActive: "" }) });
-    await expect(previewPromo(off.code, "PRO:12")).rejects.toThrow(/plus actif/);
+    // page publique : même réponse, que le code existe ou non
+    for (const c of [expired.code, subsOnly.code, off.code, "INCONNU-" + uniq("")]) {
+      await expect(createOrder(order(c))).rejects.toThrow(/^Code promo invalide$/);
+      await expect(previewPromo(c, "PRO:12")).rejects.toThrow(/^Code promo invalide$/);
+    }
     const free = await savePlatformPromo(admin, null, { ...code({ value: "100" }) });
     expect(await publicOrder(await createOrder(order(free.code)))).toMatchObject({ amount: 100, discountAmount: 149900 });
     // codes uniques sans tenir compte de la casse
     await expect(savePlatformPromo(admin, null, { ...code({ code: free.code.toLowerCase() }) })).rejects.toThrow(/existe déjà/);
     await expect(savePlatformPromo({ ...admin, isSuperAdmin: false }, null, code())).rejects.toThrow(/réservé/);
+  });
+
+  it("vérifications de code limitées par IP sur la page publique (aperçu et commande)", async () => {
+    const good = await savePlatformPromo(admin, null, { ...code({ value: "10" }) });
+    const ip = `198.51.100.${randomBytes(1)[0]}-${uniq("")}`;
+    for (let i = 0; i < 10; i++) await expect(previewPromo("FAUX" + i, "PRO:12", { ip })).rejects.toThrow(/^Code promo invalide$/);
+    for (let i = 0; i < 9; i++) await previewPromo(good.code, "PRO:12", { ip });
+    await createOrder(order(good.code), { ip }); // 20e vérification : acceptée
+    await expect(previewPromo(good.code, "PRO:12", { ip })).rejects.toThrow(/Trop de vérifications/);
+    await expect(createOrder(order(good.code), { ip })).rejects.toThrow(/Trop de vérifications/);
+    // une commande sans code n'est pas concernée, et une autre IP n'est pas bloquée
+    await expect(createOrder(order(), { ip })).resolves.toMatch(/^ZL/);
+    await expect(previewPromo(good.code, "PRO:12", { ip: ip + "b" })).resolves.toMatchObject({ discount: 15000 });
   });
 
   it("paiement d'abonnement : montant = tarif × mois − réduction", async () => {

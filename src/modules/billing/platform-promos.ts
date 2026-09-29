@@ -2,9 +2,11 @@ import { and, desc, eq, gt, isNull, lte, gte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, type Tx } from "@/db";
 import { platformPromoCodes } from "@/db/schema";
+import { isRateLimited, recordFailedAttempt } from "@/lib/auth/session";
 import { localDate } from "@/lib/dates";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { normalizePromoCode, promoDiscount, promoProblem } from "@/lib/promo";
+import { LIMITS } from "@/modules/auth/service";
 import { promoBaseSchema } from "@/modules/promos/schemas";
 
 /**
@@ -117,6 +119,34 @@ export async function quotePlatformPromo(rawCode: string, t: PlatformPromoTarget
   if (t.target === "license") discount = Math.max(0, Math.min(discount, t.amount - LICENSE_MIN_AMOUNT));
   if (discount <= 0) throw new BusinessError("Ce code promo ne réduit pas ce prix");
   return { promo, discount, amount: t.amount - discount };
+}
+
+/** Réponse unique de la page publique : on ne dit pas si le code existe, a expiré ou ne convient pas. */
+export const PUBLIC_INVALID = "Code promo invalide";
+
+/**
+ * Page publique d'achat : chaque vérification de code (aperçu ou commande) compte pour l'IP,
+ * au-delà de LIMITS.promoCheck la vérification est refusée. Sans IP connue (scripts, tests), pas de limite :
+ * une clé commune bloquerait tout le monde.
+ */
+export async function checkPromoRate(ip: string | null | undefined) {
+  if (!ip) return;
+  const key = `promo:${ip}`;
+  if (await isRateLimited(key, LIMITS.promoCheck.max, LIMITS.promoCheck.windowMs)) {
+    throw new BusinessError("Trop de vérifications de code promo depuis cette connexion. Réessayez dans 15 minutes.");
+  }
+  await recordFailedAttempt(key, LIMITS.promoCheck.windowMs);
+}
+
+/** Version publique de quotePlatformPromo : limitée par IP, et toute erreur de code devient « Code promo invalide ». */
+export async function quotePublicPromo(rawCode: string, t: PlatformPromoTarget, ip: string | null | undefined) {
+  await checkPromoRate(ip);
+  try {
+    return await quotePlatformPromo(rawCode, t);
+  } catch (e) {
+    if (e instanceof BusinessError) throw new BusinessError(PUBLIC_INVALID);
+    throw e;
+  }
 }
 
 /**
