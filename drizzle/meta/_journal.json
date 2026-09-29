@@ -71,6 +71,13 @@
       "when": 1790534112662,
       "tag": "0009_achat_licences",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790711043938,
+      "tag": "0010_entree_stock_cout",
+      "breakpoints": true
     }
   ]
 }
