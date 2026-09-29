@@ -71,6 +71,13 @@
       "when": 1790534112662,
       "tag": "0009_achat_licences",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790711694556,
+      "tag": "0012_email_codes",
+      "breakpoints": true
     }
   ]
 }

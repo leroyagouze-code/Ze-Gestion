@@ -10,6 +10,7 @@ export const metadata = { title: "Mot de passe" };
 export default async function PasswordPage() {
   const s = await getSession();
   if (!s) redirect("/login");
+  if (s.mustVerifyEmail) redirect("/verification");
   return (
     <div className="card p-6">
       <h1 className="mb-1 text-lg font-semibold">Changer mon mot de passe</h1>

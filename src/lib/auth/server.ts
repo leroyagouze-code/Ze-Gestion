@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { loadContext, type AppContext } from "@/modules/auth/context";
 import { can, type Permission } from "@/lib/permissions";
+import { mailEnabled } from "@/lib/mail";
 import { SESSION_COOKIE, validateSessionToken } from "./session";
 
 export async function requestMeta() {
@@ -32,16 +33,25 @@ export const getSession = cache(async () => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const s = await validateSessionToken(token);
-  return s ? { ...s, token } : null;
+  // Adresse email à confirmer par code (seulement si l'envoi d'emails est configuré)
+  return s ? { ...s, token, mustVerifyEmail: !s.emailVerifiedAt && mailEnabled() } : null;
 });
+
+/** Page où l'utilisateur doit aller avant tout le reste : code email, puis mot de passe provisoire. */
+export function pendingStep(s: { mustVerifyEmail: boolean; mustChangePassword: boolean } | null) {
+  if (s?.mustVerifyEmail) return "/verification";
+  if (s?.mustChangePassword) return "/account/password";
+  return null;
+}
 
 /**
  * Contexte complet de la requête (utilisateur + entreprise + permissions), mis en cache par requête.
- * Nul tant qu'un mot de passe provisoire n'a pas été changé : aucune page ni API n'est alors accessible.
+ * Nul tant que l'email n'est pas vérifié ou qu'un mot de passe provisoire n'a pas été changé :
+ * aucune page ni API n'est alors accessible.
  */
 export const getContext = cache(async (): Promise<AppContext | null> => {
   const s = await getSession();
-  if (!s?.companyId || s.mustChangePassword) return null;
+  if (!s?.companyId || pendingStep(s)) return null;
   const ctx = await loadContext(s, s.companyId);
   if (!ctx) return null;
   const { ip } = await requestMeta();
@@ -49,8 +59,9 @@ export const getContext = cache(async (): Promise<AppContext | null> => {
 });
 
 export async function requireContext(permission?: Permission): Promise<AppContext> {
-  // Mot de passe provisoire (créé ou réinitialisé par un administrateur) : à changer avant tout le reste
-  if ((await getSession())?.mustChangePassword) redirect("/account/password");
+  // Email à vérifier, puis mot de passe provisoire (créé ou réinitialisé par un administrateur) : avant tout le reste
+  const step = pendingStep(await getSession());
+  if (step) redirect(step);
   const ctx = await getContext();
   if (!ctx) redirect("/login");
   setRequestTimeZone(ctx.company.timezone);
