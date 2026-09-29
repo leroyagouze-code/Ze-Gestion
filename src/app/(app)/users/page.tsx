@@ -11,7 +11,7 @@ export const metadata = { title: "Utilisateurs" };
 
 export default async function UsersPage() {
   const ctx = await requireContext("users.manage");
-  const { members, roles, stores } = await listMembers(ctx);
+  const { members, roles, stores, registers } = await listMembers(ctx);
   const roleOpts = roles.map((r) => ({ value: r.id, label: r.name }));
   const storeOpts = stores.map((s) => ({ value: s.id, label: s.name }));
   return (
@@ -39,6 +39,12 @@ export default async function UsersPage() {
                             <option value="">Boutique par défaut</option>
                             {storeOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
+                          {registers.length > 0 && (
+                            <select name="registerId" defaultValue={u.registerId ?? ""} className="input w-36" aria-label="Caisse">
+                              <option value="">Caisse au choix</option>
+                              {registers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </select>
+                          )}
                           <SubmitButton className="btn-secondary px-3 py-1.5" pendingText="…">OK</SubmitButton>
                         </ActionForm>
                       )}

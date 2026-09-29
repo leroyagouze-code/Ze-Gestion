@@ -92,6 +92,13 @@
       "when": 1790711800000,
       "tag": "0012_email_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790711860000,
+      "tag": "0013_caisses",
+      "breakpoints": true
     }
   ]
 }

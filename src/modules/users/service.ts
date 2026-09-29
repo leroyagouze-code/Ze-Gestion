@@ -1,7 +1,8 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { auditLogs, memberships, plans, roles, stores, subscriptions, users } from "@/db/schema";
+import { auditLogs, memberships, plans, registers, roles, stores, subscriptions, users } from "@/db/schema";
+import { assertOwned } from "@/db/owned";
 import { withTenant } from "@/db/tenant";
 import { audit } from "@/lib/audit";
 import { hashPassword } from "@/lib/auth/password";
@@ -41,6 +42,7 @@ export async function listMembers(ctx: AppContext) {
         roleId: roles.id,
         roleName: roles.name,
         storeName: stores.name,
+        registerId: memberships.registerId,
         isOwner: memberships.isOwner,
         isActive: memberships.isActive,
         lastLoginAt: users.lastLoginAt,
@@ -53,6 +55,7 @@ export async function listMembers(ctx: AppContext) {
       .orderBy(users.fullName),
     roles: await tx.select().from(roles).orderBy(roles.name),
     stores: await tx.select({ id: stores.id, name: stores.name }).from(stores).where(eq(stores.isActive, true)),
+    registers: await tx.select({ id: registers.id, name: registers.name }).from(registers).where(eq(registers.isActive, true)).orderBy(registers.number),
   }));
 }
 
@@ -108,11 +111,17 @@ export async function addMember(ctx: AppContext, raw: z.input<typeof newUserSche
   });
 }
 
-export async function updateMember(ctx: AppContext, membershipId: string, patch: { roleId?: string; storeId?: string | null; isActive?: boolean }) {
+export async function updateMember(
+  ctx: AppContext,
+  membershipId: string,
+  patch: { roleId?: string; storeId?: string | null; registerId?: string | null; isActive?: boolean },
+) {
   ctxAssert(ctx, "users.manage");
   return withTenant(ctx, async (tx) => {
     const [m] = await tx.select().from(memberships).where(eq(memberships.id, membershipId));
     if (!m) throw new NotFoundError("Utilisateur");
+    await assertOwned(tx, stores, patch.storeId, "Boutique");
+    await assertOwned(tx, registers, patch.registerId, "Caisse");
     if (m.isOwner && (patch.isActive === false || patch.roleId)) throw new BusinessError("Le propriétaire du compte ne peut pas être désactivé ni changer de rôle");
     if (m.userId === ctx.userId && patch.isActive === false) throw new BusinessError("Vous ne pouvez pas vous désactiver vous-même");
     if (m.userId === ctx.userId && patch.roleId && !ctx.isAdmin) throw new BusinessError("Vous ne pouvez pas changer votre propre rôle");
