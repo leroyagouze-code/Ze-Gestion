@@ -314,11 +314,6 @@ export async function posBootstrap(ctx: AppContext) {
       .from(paymentMethods)
       .where(eq(paymentMethods.isEnabled, true))
       .orderBy(paymentMethods.sortOrder),
-    customers: await tx
-      .select({ id: customers.id, name: customers.name, phone: customers.phone })
-      .from(customers)
-      .orderBy(customers.name)
-      .limit(1000),
   }));
 }
 

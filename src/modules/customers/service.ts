@@ -6,7 +6,7 @@ import { customers, invoices, payments, paymentMethods, sales } from "@/db/schem
 import { withTenant } from "@/db/tenant";
 import { assertCollectMethod } from "@/db/owned";
 import { audit } from "@/lib/audit";
-import { NotFoundError } from "@/lib/errors";
+import { BusinessError, NotFoundError } from "@/lib/errors";
 import { pageParams } from "@/lib/pagination";
 import { num, optText } from "@/lib/zod";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
@@ -155,4 +155,75 @@ export async function recordCustomerPayment(ctx: AppContext, raw: z.input<typeof
 export async function customerOptions(ctx: AppContext) {
   ctxAssert(ctx, "customers.view");
   return withTenant(ctx, (tx) => tx.select({ id: customers.id, name: customers.name }).from(customers).orderBy(customers.name).limit(2000));
+}
+
+/** Chiffres seuls d'un numéro saisi : « 07 12-34 » et « 071234 » désignent le même client. */
+const digitsOnly = (v: string) => v.replace(/\D/g, "");
+/** Même normalisation côté SQL, pour comparer les numéros enregistrés. */
+const phoneDigits = (col: typeof customers.phone | typeof customers.whatsapp) => sql`regexp_replace(coalesce(${col}, ''), '[^0-9]', '', 'g')`;
+
+export type PosCustomer = { id: string; name: string; phone: string | null; balanceDue: number };
+
+/**
+ * Recherche d'un client depuis la caisse, au fil de la frappe (nom, société ou téléphone).
+ * Réservée à qui peut vendre : le caissier n'a pas besoin de consulter les fiches clients.
+ */
+export async function searchCustomersForPos(ctx: AppContext, q: string, limit = 12): Promise<PosCustomer[]> {
+  ctxAssert(ctx, "sales.create");
+  const term = q.trim().slice(0, 100);
+  const digits = digitsOnly(term);
+  return withTenant(ctx, async (tx) => {
+    const conds = [];
+    if (term) {
+      conds.push(
+        ilike(customers.name, contains(term)),
+        ilike(customers.companyName, contains(term)),
+        ilike(customers.phone, contains(term)),
+        ilike(customers.whatsapp, contains(term)),
+      );
+      if (digits.length >= 3) {
+        conds.push(sql`${phoneDigits(customers.phone)} like ${contains(digits)}`);
+        conds.push(sql`${phoneDigits(customers.whatsapp)} like ${contains(digits)}`);
+      }
+    }
+    return tx
+      .select({ id: customers.id, name: customers.name, phone: customers.phone, balanceDue: customers.balanceDue })
+      .from(customers)
+      .where(conds.length ? or(...conds) : undefined)
+      .orderBy(term ? customers.name : desc(customers.createdAt))
+      .limit(Math.min(Math.max(limit, 1), 50));
+  });
+}
+
+export const posCustomerSchema = z.object({
+  name: z.string().trim().min(1, "Nom requis").max(200),
+  phone: z
+    .string()
+    .trim()
+    .max(40, "Numéro trop long")
+    .refine((v) => digitsOnly(v).length >= 6, "Numéro de téléphone requis"),
+});
+
+/**
+ * Création rapide d'un client depuis la caisse (nom + téléphone), sans quitter la vente.
+ * Exige « Ajouter des clients » ; refuse un numéro déjà enregistré pour éviter les doublons.
+ */
+export async function createCustomerFromPos(ctx: AppContext, raw: z.input<typeof posCustomerSchema>): Promise<PosCustomer> {
+  ctxAssert(ctx, "sales.create");
+  ctxAssert(ctx, "customers.create");
+  const input = posCustomerSchema.parse(raw);
+  return withTenant(ctx, async (tx) => {
+    const [dup] = await tx
+      .select({ name: customers.name })
+      .from(customers)
+      .where(sql`${phoneDigits(customers.phone)} = ${digitsOnly(input.phone)}`)
+      .limit(1);
+    if (dup) throw new BusinessError(`Ce numéro est déjà celui de « ${dup.name} » : recherchez ce client`);
+    const [c] = await tx
+      .insert(customers)
+      .values({ companyId: ctx.companyId, name: input.name, phone: input.phone })
+      .returning({ id: customers.id, name: customers.name, phone: customers.phone, balanceDue: customers.balanceDue });
+    await audit(tx, { companyId: ctx.companyId, userId: ctx.userId, action: "customer.created", entityType: "customer", entityId: c.id, metadata: { name: input.name, from: "pos" }, ip: ctx.ip });
+    return c;
+  });
 }
