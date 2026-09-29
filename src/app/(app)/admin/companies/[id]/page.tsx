@@ -74,7 +74,8 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
               options={paidPlans.map((p) => ({ value: p.id, label: `${p.name} · ${formatMoney(p.monthlyPrice, p.currency)} / mois` }))}
             />
             <Field label="Nombre de mois" name="months" type="number" min={1} max={36} defaultValue={1} required />
-            <Field label="Montant reçu (FCFA)" name="amount" type="number" min={0} step="1" required />
+            <Field label="Montant reçu (FCFA)" name="amount" type="number" min={0} step="1" hint="Laissez vide avec un code promo : calculé depuis le tarif de la formule" />
+            <Field label="Code promo (facultatif)" name="promoCode" autoComplete="off" hint="Le montant devient le tarif mensuel × mois, moins la réduction" />
             <SelectField label="Moyen de paiement" name="method" options={methods} />
             <Field label="Référence (n° de transaction)" name="reference" className="sm:col-span-2" />
             <div className="sm:col-span-2"><SubmitButton>Enregistrer le paiement</SubmitButton></div>
@@ -132,7 +133,10 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
                     <td>{formatDate(p.periodStart)} → {formatDate(p.periodEnd)} ({p.months} mois)</td>
                     <td>{PAYMENT_METHODS[p.method as keyof typeof PAYMENT_METHODS] ?? p.method}</td>
                     <td>{p.reference ?? "—"}</td>
-                    <td className="text-right font-medium">{formatMoney(p.amount, p.currency)}</td>
+                    <td className="text-right font-medium">
+                      {formatMoney(p.amount, p.currency)}
+                      {p.promoCode && <div className="text-xs font-normal text-emerald-700">{p.promoCode} −{formatMoney(p.discountAmount, p.currency)}</div>}
+                    </td>
                     <td className="text-slate-500">{recordedBy ?? "—"}</td>
                   </tr>
                 ))}

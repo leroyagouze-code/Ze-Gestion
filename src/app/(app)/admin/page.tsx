@@ -41,6 +41,7 @@ export default async function AdminDashboard() {
             <Link href="/admin/entreprises" className="btn-secondary">Entreprises</Link>
             <Link href="/admin/installations" className="btn-secondary">Installations</Link>
             <Link href="/admin/licences" className="btn-secondary">Licences</Link>
+            <Link href="/admin/codes-promo" className="btn-secondary">Codes promo</Link>
           </>
         }
       />

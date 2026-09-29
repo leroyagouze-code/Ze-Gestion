@@ -18,6 +18,7 @@ import { BusinessError, NotFoundError } from "@/lib/errors";
 import { computeTotals, currencyDecimals, isTaxMode, lineDiscount, round } from "@/lib/money";
 import { pageParams } from "@/lib/pagination";
 import { ctxAssert, ctxCan, type AppContext } from "@/modules/auth/context";
+import { applyPromoInSale, releasePromoInSale } from "@/modules/promos/service";
 import { nextDocumentNumber } from "@/modules/settings/sequences";
 import { applyMovement } from "@/modules/stock/service";
 
@@ -37,6 +38,8 @@ export const saleSchema = z.object({
     .array(z.object({ paymentMethodId: z.string().uuid(), amount: z.number().min(0), reference: z.string().max(100).nullish() }))
     .default([]),
   notes: z.string().max(1000).nullish(),
+  /** Code promo de l'entreprise saisi en caisse : sa réduction est calculée par le serveur. */
+  promoCode: z.string().trim().max(40).nullish(),
 });
 export type SaleInput = z.input<typeof saleSchema>;
 
@@ -76,7 +79,18 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       return { p, quantity: i.quantity, unitPrice, discount: i.discount, taxRate: p.taxRate };
     });
     const taxMode = isTaxMode(ctx.company.taxMode) ? ctx.company.taxMode : "line";
-    const totals = computeTotals(lines, input.discount, decimals, taxMode);
+    // Code promo : réduction ajoutée à la remise globale, sur le montant des lignes après leurs remises
+    // (même base que la remise globale : TTC en mode "line", HT en mode "total").
+    const promo = input.promoCode
+      ? await applyPromoInSale(
+          tx,
+          ctx,
+          input.promoCode,
+          round(lines.reduce((s, l) => s + Math.max(l.quantity * l.unitPrice - lineDiscount(l), 0), 0), decimals),
+          decimals,
+        )
+      : null;
+    const totals = computeTotals(lines, input.discount + (promo?.discount ?? 0), decimals, taxMode);
     if (totals.total < 0) throw new BusinessError("Total négatif");
 
     // Paiements : on n'enregistre pas la monnaie rendue ; le reste dû devient une créance client.
@@ -118,6 +132,9 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         paidAmount: paid,
         dueAmount: due,
         notes: input.notes ?? null,
+        promoCodeId: promo?.promo.id ?? null,
+        promoCode: promo?.promo.code ?? null,
+        promoDiscount: promo?.discount ?? 0,
       })
       .returning({ id: sales.id });
 
@@ -190,10 +207,10 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
       action: "sale.created",
       entityType: "sale",
       entityId: sale.id,
-      metadata: { number, total: totals.total, due },
+      metadata: { number, total: totals.total, due, ...(promo ? { promoCode: promo.promo.code, promoDiscount: promo.discount } : {}) },
       ip: ctx.ip,
     });
-    return { id: sale.id, number, total: totals.total, paid, due, change };
+    return { id: sale.id, number, total: totals.total, paid, due, change, promoCode: promo?.promo.code ?? null, promoDiscount: promo?.discount ?? 0 };
   });
 }
 
@@ -218,6 +235,7 @@ export async function cancelSale(ctx: AppContext, id: string, reason: string) {
       });
     }
     await tx.update(sales).set({ status: "cancelled", dueAmount: 0 }).where(eq(sales.id, id));
+    if (sale.promoCodeId) await releasePromoInSale(tx, sale.promoCodeId);
     await tx.update(invoices).set({ status: "cancelled" }).where(eq(invoices.saleId, id));
     if (sale.customerId) {
       await tx

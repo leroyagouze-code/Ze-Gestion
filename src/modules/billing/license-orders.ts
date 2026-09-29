@@ -6,6 +6,7 @@ import { licenseIssues, licenseOrders, licensePrices } from "@/db/schema";
 import { BusinessError, NotFoundError } from "@/lib/errors";
 import { createLicense, LICENSE_PLANS, normalizeCode, type LicensePlan } from "@/lib/license";
 import { LICENSE_DURATIONS, licenseEnd } from "@/modules/billing/license";
+import { quotePlatformPromo, releasePlatformPromo, reservePlatformPromo } from "@/modules/billing/platform-promos";
 import { localPhone, NETWORKS, paygateStatus, paymentMode, requestPaygatePayment, type Network } from "@/modules/billing/paygate";
 
 /**
@@ -78,7 +79,47 @@ export const orderSchema = z.object({
     .transform((v) => v || null)
     .pipe(z.string().email("E-mail invalide").nullable()),
   network: z.enum(Object.keys(NETWORKS) as [Network, ...Network[]], { message: "Choisissez TMoney ou Flooz" }),
+  promoCode: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .transform((v) => v || null),
 });
+
+async function activePrice(offer: string) {
+  const [plan, duration] = offer.split(":");
+  const [price] = await db
+    .select()
+    .from(licensePrices)
+    .where(and(eq(licensePrices.plan, plan), eq(licensePrices.duration, duration), eq(licensePrices.isActive, true)));
+  if (!price) throw new BusinessError("Cette formule n'est plus proposée");
+  return price;
+}
+
+/** Aperçu du prix avec un code promo sur la page d'achat (le prix payé est recalculé à la commande). */
+export async function previewPromo(rawCode: string, offer: string) {
+  if (!/^[A-Z]+:[a-z0-9]+$/.test(offer)) throw new BusinessError("Choisissez une formule");
+  const price = await activePrice(offer);
+  const q = await quotePlatformPromo(rawCode, { target: "license", plan: price.plan, amount: price.amount });
+  return { code: q.promo.code, listAmount: price.amount, discount: q.discount, amount: q.amount, currency: price.currency };
+}
+
+/**
+ * Commande échouée : le code promo éventuel récupère son utilisation.
+ * Seule une commande encore en attente passe en échec (une seule fois, même en cas d'appels simultanés).
+ */
+async function failOrder(id: string, reason: string) {
+  return db.transaction(async (tx) => {
+    const [f] = await tx
+      .update(licenseOrders)
+      .set({ status: "failed", failureReason: reason })
+      .where(and(eq(licenseOrders.id, id), eq(licenseOrders.status, "pending")))
+      .returning();
+    if (f?.promoCodeId) await releasePlatformPromo(tx, f.promoCodeId);
+    return f;
+  });
+}
 
 function newReference() {
   const A = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -90,12 +131,10 @@ export async function createOrder(raw: unknown) {
   if (!mode) throw new BusinessError("La vente en ligne n'est pas encore ouverte. Contactez ZE GROUP.");
   if (!process.env.LICENSE_PRIVATE_KEY) throw new BusinessError("La vente en ligne n'est pas configurée sur ce serveur (clé des licences absente).");
   const input = orderSchema.parse(raw);
-  const [plan, duration] = input.offer.split(":");
-  const [price] = await db
-    .select()
-    .from(licensePrices)
-    .where(and(eq(licensePrices.plan, plan), eq(licensePrices.duration, duration), eq(licensePrices.isActive, true)));
-  if (!price) throw new BusinessError("Cette formule n'est plus proposée");
+  const price = await activePrice(input.offer);
+  // Prix payé calculé ici, depuis le tarif en base : le navigateur n'envoie que le code
+  const quote = input.promoCode ? await quotePlatformPromo(input.promoCode, { target: "license", plan: price.plan, amount: price.amount }) : null;
+  const amount = quote ? quote.amount : price.amount;
   const installId = formatInstall(input.installId);
   // Limite simple contre les abus : 5 commandes par poste et par heure
   const [recent] = await db
@@ -105,33 +144,42 @@ export async function createOrder(raw: unknown) {
   if (recent.n >= 5) throw new BusinessError("Trop de tentatives pour cet ordinateur. Réessayez dans une heure.");
 
   const reference = newReference();
-  const [order] = await db
-    .insert(licenseOrders)
-    .values({
-      reference,
-      installId,
-      plan: price.plan,
-      duration: price.duration,
-      amount: price.amount,
-      currency: price.currency,
-      customerName: input.customerName,
-      phone: input.phone,
-      email: input.email,
-      network: input.network,
-      provider: mode,
-    })
-    .returning();
+  const order = await db.transaction(async (tx) => {
+    // L'utilisation du code est réservée à la commande (rendue si le paiement échoue)
+    if (quote) await reservePlatformPromo(tx, quote.promo.id);
+    const [o] = await tx
+      .insert(licenseOrders)
+      .values({
+        reference,
+        installId,
+        plan: price.plan,
+        duration: price.duration,
+        amount,
+        listAmount: price.amount,
+        discountAmount: quote?.discount ?? 0,
+        promoCodeId: quote?.promo.id ?? null,
+        promoCode: quote?.promo.code ?? null,
+        currency: price.currency,
+        customerName: input.customerName,
+        phone: input.phone,
+        email: input.email,
+        network: input.network,
+        provider: mode,
+      })
+      .returning();
+    return o;
+  });
 
   if (mode === "paygate") {
     const res = await requestPaygatePayment({
       reference,
-      amount: price.amount,
+      amount,
       phone: input.phone,
       network: input.network,
       description: `Licence ZE Gestion ${price.plan} ${LICENSE_DURATIONS[price.duration as Duration]}`,
     });
     if (res.ok) await db.update(licenseOrders).set({ providerRef: res.txReference }).where(eq(licenseOrders.id, order.id));
-    else await db.update(licenseOrders).set({ status: "failed", failureReason: res.reason }).where(eq(licenseOrders.id, order.id));
+    else await failOrder(order.id, res.reason);
   }
   return reference;
 }
@@ -168,14 +216,7 @@ export async function refreshOrder(reference: string, opts: { force?: boolean } 
   await db.update(licenseOrders).set({ checkedAt: new Date() }).where(eq(licenseOrders.id, o.id));
   const st = await paygateStatus(reference);
   if (st.state === "paid") return fulfillOrder(reference, { paymentRef: st.paymentRef });
-  if (st.state === "failed") {
-    const [f] = await db
-      .update(licenseOrders)
-      .set({ status: "failed", failureReason: st.reason })
-      .where(and(eq(licenseOrders.id, o.id), eq(licenseOrders.status, "pending")))
-      .returning();
-    return f ?? o;
-  }
+  if (st.state === "failed") return (await failOrder(o.id, st.reason)) ?? o;
   return o;
 }
 
@@ -186,8 +227,7 @@ export async function simulatePayment(reference: string, outcome: "paid" | "fail
   if (!o || o.provider !== "simulation") throw new NotFoundError("Commande");
   if (o.status !== "pending") return o;
   if (outcome === "paid") return fulfillOrder(reference, { paymentRef: `SIMU-${Date.now().toString(36).toUpperCase()}` });
-  const [f] = await db.update(licenseOrders).set({ status: "failed", failureReason: "Paiement refusé (simulation)" }).where(eq(licenseOrders.id, o.id)).returning();
-  return f;
+  return (await failOrder(o.id, "Paiement refusé (simulation)")) ?? o;
 }
 
 /** Vue publique d'une commande : ce que le client voit sur la page de suivi. */
@@ -199,6 +239,9 @@ export async function publicOrder(reference: string) {
     plan: o.plan,
     duration: o.duration as Duration,
     amount: o.amount,
+    listAmount: o.listAmount,
+    discountAmount: o.discountAmount,
+    promoCode: o.promoCode,
     currency: o.currency,
     network: o.network as Network | null,
     phone: o.phone,

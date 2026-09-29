@@ -22,6 +22,7 @@ import {
   Wallet,
   X,
   Shield,
+  Tag,
 } from "lucide-react";
 import { Logo } from "./logo";
 
@@ -41,6 +42,7 @@ const ICONS = {
   audit: History,
   admin: Shield,
   licence: KeyRound,
+  promos: Tag,
 };
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };

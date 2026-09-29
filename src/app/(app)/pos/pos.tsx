@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
-import { Camera, Minus, Plus, ScanLine, Trash2, X } from "lucide-react";
-import { computeTotals, formatMoney, formatQty, type TaxMode } from "@/lib/money";
-import { createSaleAction } from "./actions";
+import { Camera, Minus, Plus, ScanLine, Tag, Trash2, X } from "lucide-react";
+import { computeTotals, formatMoney, formatQty, lineDiscount, round, type TaxMode } from "@/lib/money";
+import { promoDiscount, promoLabel } from "@/lib/promo";
+import { createSaleAction, lookupPromoAction } from "./actions";
 
 type Product = {
   id: string;
@@ -21,6 +22,7 @@ type Line = { product: Product; quantity: number; discount: number };
 type Method = { id: string; label: string; type: string };
 /** auto : montant rempli par la caisse, qui suit le total tant que le caissier ne le modifie pas. */
 type Pay = { paymentMethodId: string; amount: string; reference: string; auto?: boolean };
+type Promo = { code: string; kind: string; value: number; minPurchase: number | null; description: string | null };
 
 const price = (p: Product) => (p.promoPrice != null && p.promoPrice > 0 ? p.promoPrice : p.salePrice);
 
@@ -45,6 +47,10 @@ export function Pos({
   const [results, setResults] = useState<Product[]>([]);
   const [cart, setCart] = useState<Line[]>([]);
   const [discount, setDiscount] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [promo, setPromo] = useState<Promo | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [checkingPromo, startPromo] = useTransition();
   const [customerId, setCustomerId] = useState("");
   const [pays, setPays] = useState<Pay[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -87,16 +93,31 @@ export function Pos({
     } else if (!found.length) setError(`Aucun produit pour « ${term} »`);
   }
 
-  const totals = useMemo(
-    () =>
-      computeTotals(
-        cart.map((l) => ({ quantity: l.quantity, unitPrice: price(l.product), discount: l.discount, taxRate: l.product.taxRate })),
-        Number(discount.replace(",", ".")) || 0,
-        decimals,
-        taxMode,
-      ),
-    [cart, discount, decimals, taxMode],
+  const lineInputs = useMemo(
+    () => cart.map((l) => ({ quantity: l.quantity, unitPrice: price(l.product), discount: l.discount, taxRate: l.product.taxRate })),
+    [cart],
   );
+  // Aperçu de la réduction du code promo (le serveur la recalcule à l'encaissement), sur la base de la remise globale
+  const promoBase = round(lineInputs.reduce((s, l) => s + Math.max(l.quantity * l.unitPrice - lineDiscount(l), 0), 0), decimals);
+  const promoShort = promo?.minPurchase != null && promo.minPurchase > 0 && promoBase < promo.minPurchase;
+  const promoAmount = promo && !promoShort ? promoDiscount(promo, promoBase, decimals) : 0;
+  const totals = useMemo(
+    () => computeTotals(lineInputs, (Number(discount.replace(",", ".")) || 0) + promoAmount, decimals, taxMode),
+    [lineInputs, discount, promoAmount, decimals, taxMode],
+  );
+
+  function applyPromo() {
+    const code = promoInput.trim();
+    if (!code) return;
+    setPromoError(null);
+    startPromo(async () => {
+      const res = await lookupPromoAction(code);
+      if (res.ok) {
+        setPromo(res.promo);
+        setPromoInput("");
+      } else setPromoError(res.error);
+    });
+  }
 
   const tendered = pays.reduce((s, p) => s + (Number(p.amount.replace(/\s/g, "").replace(",", ".")) || 0), 0);
   const creditSelected = pays.some((p) => paymentMethods.find((mm) => mm.id === p.paymentMethodId)?.type === "credit");
@@ -121,6 +142,9 @@ export function Pos({
   function reset() {
     setCart([]);
     setDiscount("");
+    setPromo(null);
+    setPromoInput("");
+    setPromoError(null);
     setCustomerId("");
     setPays([]);
     setDone(null);
@@ -142,6 +166,7 @@ export function Pos({
           items: cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, discount: l.discount })),
           customerId: customerId || null,
           discount: Number(discount.replace(",", ".")) || 0,
+          promoCode: promo?.code ?? null,
           payments,
         },
         withInvoice,
@@ -205,6 +230,45 @@ export function Pos({
           </select>
           {canDiscount && <input className="input" placeholder="Remise globale" inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} />}
         </div>
+        {promo ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+            <span className="min-w-0">
+              <Tag size={14} className="mr-1 inline text-emerald-700" />
+              <b className="font-mono">{promo.code}</b> {promoLabel(promo, m)}
+              {promoShort && <span className="block text-xs text-amber-700">Achat minimum {m(promo.minPurchase!)} : réduction non appliquée</span>}
+            </span>
+            <span className="flex items-center gap-1">
+              {promoAmount > 0 && <span className="font-medium text-emerald-800">−{m(promoAmount)}</span>}
+              <button className="btn-ghost px-1" onClick={() => setPromo(null)} aria-label="Retirer le code promo"><X size={16} /></button>
+            </span>
+          </div>
+        ) : (
+          <div>
+            <div className="flex gap-2">
+              <input
+                className="input font-mono uppercase"
+                placeholder="Code promo"
+                value={promoInput}
+                autoComplete="off"
+                onChange={(e) => {
+                  setPromoInput(e.target.value);
+                  setPromoError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyPromo();
+                  }
+                }}
+                aria-label="Code promo"
+              />
+              <button className="btn-secondary whitespace-nowrap" disabled={!promoInput.trim() || checkingPromo} onClick={applyPromo}>
+                {checkingPromo ? "…" : "Appliquer"}
+              </button>
+            </div>
+            {promoError && <p className="mt-1 text-xs text-red-700">{promoError}</p>}
+          </div>
+        )}
         <div className="space-y-1 text-sm">
           <div className="flex justify-between text-slate-500"><span>Total HT</span><span>{m(totals.subtotal)}</span></div>
           <div className="flex justify-between text-slate-500"><span>TVA</span><span>{m(totals.taxTotal)}</span></div>

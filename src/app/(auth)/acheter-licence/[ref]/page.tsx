@@ -32,6 +32,12 @@ export default async function OrderPage({ params }: { params: Promise<{ ref: str
           Ordinateur <span className="font-mono">{o.installId}</span> · {formatMoney(o.amount, o.currency)}
           {o.network ? ` · ${NETWORKS[o.network]} ${o.phone}` : ""}
         </p>
+        {o.promoCode && o.discountAmount > 0 && (
+          <p className="text-sm text-emerald-700">
+            Code promo {o.promoCode} : −{formatMoney(o.discountAmount, o.currency)}
+            {o.listAmount ? ` sur ${formatMoney(o.listAmount, o.currency)}` : ""}
+          </p>
+        )}
       </div>
 
       {o.status === "pending" && o.provider === "simulation" && (
