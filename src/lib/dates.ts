@@ -59,3 +59,9 @@ export function formatDate(d: Date | string, withTime = false) {
   const date = typeof d === "string" ? new Date(d) : d;
   return new Intl.DateTimeFormat("fr-FR", { ...(withTime ? { dateStyle: "short", timeStyle: "short" } : { dateStyle: "short" }), timeZone: requestTimeZone() } as Intl.DateTimeFormatOptions).format(date);
 }
+
+/** Heure seule (HH:MM) dans le fuseau de l'entreprise. */
+export function formatTime(d: Date | string) {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return new Intl.DateTimeFormat("fr-FR", { timeStyle: "short", timeZone: requestTimeZone() }).format(date);
+}
