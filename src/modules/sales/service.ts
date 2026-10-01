@@ -137,6 +137,8 @@ export async function createSale(ctx: AppContext, raw: SaleInput) {
         costTotal,
         paidAmount: paid,
         dueAmount: due,
+        tenderedAmount: tenderedSum,
+        changeAmount: change,
         notes: input.notes ?? null,
         promoCodeId: promo?.promo.id ?? null,
         promoCode: promo?.promo.code ?? null,

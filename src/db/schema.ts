@@ -697,6 +697,9 @@ export const sales = pgTable(
     costTotal: money("cost_total").notNull().default(0),
     paidAmount: money("paid_amount").notNull().default(0),
     dueAmount: money("due_amount").notNull().default(0),
+    /** Montant remis par le client (hors crédit) et monnaie rendue, imprimés sur le ticket. */
+    tenderedAmount: money("tendered_amount").notNull().default(0),
+    changeAmount: money("change_amount").notNull().default(0),
     notes: text("notes"),
     /** Code promo de l'entreprise appliqué à la vente (sa réduction est comprise dans la remise globale). */
     promoCodeId: uuid("promo_code_id").references(() => promoCodes.id, { onDelete: "set null" }),

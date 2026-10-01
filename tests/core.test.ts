@@ -6,7 +6,8 @@ import { withTenant } from "@/db/tenant";
 import { computeTotals } from "@/lib/money";
 import { login, AuthError } from "@/modules/auth/service";
 import { createProduct, listProducts, searchForPos, getProduct } from "@/modules/products/service";
-import { createSale, cancelSale, posBootstrap } from "@/modules/sales/service";
+import { createSale, cancelSale, getSale, posBootstrap } from "@/modules/sales/service";
+import { receiptPdf } from "@/pdf/documents";
 import { createInvoiceFromSale, getPublicInvoice, getInvoice } from "@/modules/invoices/service";
 import { createCustomer, recordCustomerPayment } from "@/modules/customers/service";
 import { recordManualMovement } from "@/modules/stock/service";
@@ -68,6 +69,12 @@ describe("vente de caisse", () => {
     expect(s1.total).toBe(4500);
     expect(s1.change).toBe(500);
     expect(s1.number).toMatch(/^VTE-\d{4}-000001$/);
+    // le ticket réimprimé garde le montant remis et la monnaie rendue
+    const d1 = await getSale(ctx, s1.id);
+    expect(d1.sale.tenderedAmount).toBe(5000);
+    expect(d1.sale.changeAmount).toBe(500);
+    const pdf = await receiptPdf(ctx.company, d1.sale, d1.items, d1.payments, { cashier: d1.userName, register: d1.registerName });
+    expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
 
     // crédit sans client refusé
     await expect(createSale(ctx, { items: [{ productId: pid, quantity: 1 }], payments: [] })).rejects.toThrow(/client/);
