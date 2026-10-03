@@ -1,0 +1,31 @@
+name: ZE LOYER rappels quotidiens
+
+# Déclenche chaque matin les rappels de loyer (J-7, J-3, J-1, Jour J, J+3, J+7) sur le site en ligne.
+# Configuration : variable ZE_LOYER_URL (ex. https://loyer.zegroupafrica.com) et secret ZE_LOYER_CRON_SECRET
+# (même valeur que CRON_SECRET sur Render). Sans configuration, le workflow ne fait rien.
+on:
+  schedule:
+    - cron: "0 7 * * *" # 7 h 00 à Lomé (UTC+0)
+  workflow_dispatch:
+
+jobs:
+  rappels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Lancer les rappels
+        env:
+          URL: ${{ vars.ZE_LOYER_URL }}
+          SECRET: ${{ secrets.ZE_LOYER_CRON_SECRET }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$SECRET" ]; then
+            echo "::notice::ZE_LOYER_URL ou ZE_LOYER_CRON_SECRET non configuré : rien à faire."
+            exit 0
+          fi
+          # Le serveur peut mettre un peu de temps à répondre : 3 essais
+          for i in 1 2 3; do
+            if curl -fsS --max-time 120 -H "Authorization: Bearer $SECRET" "${URL%/}/api/cron/rappels"; then exit 0; fi
+            sleep 30
+          done
+          echo "::error::Le site n'a pas répondu aux rappels."
+          exit 1

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ZE LOYER</title>
+  <style>/*CSS*/</style>
+</head>
+<body>
+  <div class="logo" aria-hidden="true">ZL</div>
+  <h1>📶 Pas de connexion</h1>
+  <p>ZE LOYER n'arrive pas à joindre le serveur. Vérifiez votre connexion internet (données mobiles ou Wi-Fi), puis réessayez.</p>
+  <button id="retry" type="button">Réessayer</button>
+  <small>Vos données sont en sécurité.</small>
+  <script>
+    // Adresse du serveur inscrite à la construction de l'application (scripts/configure.mjs) :
+    // la page ne dépend d'aucun autre fichier, elle fonctionne même quand le serveur ne répond pas.
+    const SERVER = "__SERVER_URL__";
+    document.getElementById("retry").addEventListener("click", () => {
+      location.href = SERVER ? SERVER + "/connexion" : "index.html";
+    });
+  </script>
+</body>
+</html>

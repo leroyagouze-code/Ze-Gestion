@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/*
+ * Identité ZE LOYER : vert profond, fond clair chaleureux, statuts lisibles.
+ * Vert = payé / à jour · Rouge = impayé · Orange = en attente / partiel · Bleu = information / avance
+ */
+@theme {
+  --color-brand-50: #eef7f2;
+  --color-brand-100: #d5ecdf;
+  --color-brand-200: #a9d7bf;
+  --color-brand-500: #1f8a5b;
+  --color-brand-600: #16734b;
+  --color-brand-700: #0f5f3e;
+  --color-brand-800: #0b4a31;
+  --color-brand-900: #073523;
+  --color-sand-50: #faf8f3;
+  --color-sand-100: #f3efe5;
+  --color-sand-200: #e7e0cf;
+  --color-ink: #16211c;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+@layer base {
+  body { @apply bg-sand-50 text-ink antialiased; font-size: 16px; }
+  :focus-visible { outline: 3px solid var(--color-brand-500); outline-offset: 2px; }
+}
+
+@utility input {
+  @apply block w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base text-ink shadow-sm outline-none transition placeholder:text-stone-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-100 disabled:bg-stone-100;
+  min-height: 48px;
+}
+@utility label {
+  @apply mb-1.5 block text-[15px] font-semibold text-stone-800;
+}
+@utility btn-base {
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-5 text-base font-semibold transition select-none disabled:cursor-not-allowed disabled:opacity-50;
+  min-height: 48px;
+}
+@utility btn-primary {
+  @apply btn-base bg-brand-700 text-white shadow-sm hover:bg-brand-800 active:bg-brand-900;
+}
+@utility btn-secondary {
+  @apply btn-base border border-stone-300 bg-white text-stone-800 hover:bg-stone-50;
+}
+@utility btn-danger {
+  @apply btn-base bg-red-700 text-white hover:bg-red-800;
+}
+@utility btn-ghost {
+  @apply btn-base text-brand-700 hover:bg-brand-50;
+}
+@utility btn-sm {
+  min-height: 40px;
+  @apply px-3 text-sm;
+}
+@utility card {
+  @apply rounded-2xl border border-sand-200 bg-white shadow-[0_1px_2px_rgba(22,33,28,0.04)];
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}
