@@ -38,9 +38,36 @@ const LABELS: Record<string, string> = {
   "user.updated": "Modification d'utilisateur",
   "role.created": "Création de rôle",
   "role.updated": "Modification de rôle",
-  "platform.company_suspended": "Suspension par la plateforme",
-  "platform.company_active": "Réactivation par la plateforme",
+  "platform.company_suspended": "Suspension du compte",
+  "platform.company_active": "Réactivation du compte",
   "platform.plan_changed": "Changement de formule",
+  "platform.trial_extended": "Période d'essai prolongée",
+  "platform.payment_recorded": "Paiement de l'abonnement enregistré",
+  "platform.free_access": "Accès offert",
+  "platform.unlimited_granted": "Accès illimité activé",
+  "platform.unlimited_removed": "Accès illimité retiré",
+  "auth.email_verified": "Adresse email vérifiée",
+  "auth.password_changed": "Changement de mot de passe",
+  "auth.password_reset_by_email": "Mot de passe réinitialisé par email",
+  "user.password_reset": "Réinitialisation du mot de passe d'un utilisateur",
+  "role.deleted": "Suppression de rôle",
+  "company.modules": "Modules affichés modifiés",
+  "company.tax_mode": "Mode de TVA modifié",
+  "numbering.updated": "Numérotation modifiée",
+  "payment_method.updated": "Moyen de paiement modifié",
+  "tax.created": "Création de taxe",
+  "tax.updated": "Modification de taxe",
+  "license.activate": "Activation de licence",
+  "promo.created": "Création de code promo",
+  "promo.updated": "Modification de code promo",
+  "promo.enabled": "Code promo activé",
+  "promo.disabled": "Code promo désactivé",
+  "promo.deleted": "Suppression de code promo",
+  "register.created": "Création de caisse",
+  "register.updated": "Modification de caisse",
+  "cash_session.opened": "Ouverture de caisse",
+  "cash_session.closed": "Clôture de caisse",
+  "cash_session.force_closed": "Clôture de caisse par un responsable",
 };
 
 function describe(meta: Record<string, unknown> | null) {
@@ -50,6 +77,8 @@ function describe(meta: Record<string, unknown> | null) {
   if (Array.isArray(meta.salePrice)) parts.push(`prix : ${meta.salePrice[0]} → ${meta.salePrice[1]}`);
   if (typeof meta.delta === "number") parts.push(`${meta.delta > 0 ? "+" : ""}${meta.delta}`);
   if (typeof meta.total === "number") parts.push(`total ${meta.total}`);
+  if (typeof meta.days === "number") parts.push(`+${meta.days} jours`);
+  if (meta.plan) parts.push(String(meta.plan));
   return parts.join(" · ");
 }
 
