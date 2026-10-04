@@ -14,7 +14,7 @@ import {
 } from "@/modules/admin/service";
 import { loadContext, type AppContext } from "@/modules/auth/context";
 import { computeState } from "@/modules/billing/access";
-import { addMember, listMembers } from "@/modules/users/service";
+import { addMember, listAudit, listMembers, PLATFORM_ACTOR } from "@/modules/users/service";
 import { newCompany } from "./helpers";
 
 const reload = async (ctx: AppContext) =>
@@ -104,5 +104,23 @@ describe("abonnements (super admin)", () => {
     expect(after.subscription).toMatchObject({ unlimited: false, readOnly: true });
     await expect(addMember(after, member(2))).rejects.toThrow();
     expect(await db.select().from(subscriptionPayments).where(eq(subscriptionPayments.companyId, ctx.companyId))).toHaveLength(0);
+  });
+
+  it("affiche les actions de la plateforme sous « Équipe ZE Gestion » dans le journal du client", async () => {
+    const ctx = await newCompany("Client essai prolongé");
+    const boss = await newCompany("Plateforme");
+    const admin = { userId: boss.userId, isSuperAdmin: true };
+    await setUnlimited(admin, ctx.companyId, true, "note interne");
+    await setUnlimited(admin, ctx.companyId, false);
+    const { rows } = await listAudit(ctx, {});
+    const platform = rows.filter((r) => r.action.startsWith("platform."));
+    expect(platform.length).toBeGreaterThanOrEqual(2);
+    for (const r of platform) {
+      expect(r.userName).toBe(PLATFORM_ACTOR);
+      expect(r.ip).toBeNull();
+      expect(JSON.stringify(r.metadata ?? {})).not.toContain("note interne");
+    }
+    // Les actions du client gardent son nom
+    expect(rows.find((r) => r.action === "company.created")?.userName).toBe(ctx.user.fullName);
   });
 });
