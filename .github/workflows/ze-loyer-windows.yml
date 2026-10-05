@@ -38,6 +38,7 @@ jobs:
         working-directory: ze-loyer/desktop
         env:
           ZE_PG_BIN: ${{ github.workspace }}\ze-loyer\desktop\app\pgsql\bin
+          ZE_DIAG_DIR: ${{ runner.temp }}
       - name: Construire l'installateur
         run: npx electron-builder --win nsis --x64 --publish never
         working-directory: ze-loyer/desktop
@@ -49,6 +50,7 @@ jobs:
         env:
           ZE_RESOURCES: ${{ github.workspace }}\ze-loyer\desktop\dist\win-unpacked\resources
           ZE_PG_BIN: ${{ github.workspace }}\ze-loyer\desktop\dist\win-unpacked\resources\pgsql\bin
+          ZE_DIAG_DIR: ${{ runner.temp }}
       - uses: actions/upload-artifact@v4
         with:
           name: ZE-LOYER-Windows
@@ -58,3 +60,9 @@ jobs:
         if: failure()
         shell: bash
         run: cat "$TEMP/ze-loyer-smoke/logs/"*.log "$TEMP/ze-loyer-packaged/logs/"*.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ZE-LOYER-Windows-diagnostic
+          path: ${{ runner.temp }}/ze-loyer-echec-*.png
+          if-no-files-found: ignore

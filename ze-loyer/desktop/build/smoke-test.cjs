@@ -44,18 +44,27 @@ async function browserJourney(url, check) {
   const browser = await chromium.launch(process.env.ZE_CHROME ? { executablePath: process.env.ZE_CHROME } : { channel: "chrome" });
   try {
     const p = await browser.newPage();
-    await p.goto(`${url}/connexion`);
+    await p.goto(`${url}/connexion`, { waitUntil: "networkidle" });
     await p.fill("input[name=identifier]", "90000001");
     await p.fill("input[name=password]", "zeloyer2026");
     await Promise.all([p.waitForURL((u) => !u.pathname.startsWith("/connexion"), { timeout: 60_000 }), p.click("button[type=submit]")]);
     check(new URL(p.url()).pathname === "/tableau-de-bord", "connexion de l'agence de démo (cookie de session sur localhost)");
-    await p.goto(`${url}/paiements/nouveau`);
+    // Attendre que la page soit complètement chargée (formulaire interactif) avant de le remplir
+    await p.goto(`${url}/paiements/nouveau`, { waitUntil: "networkidle" });
     const options = await p.$$eval("select[name=leaseId] option", (o) => o.map((x) => [x.value, x.textContent]));
     const kossi = options.find(([, t]) => /Kossi Mensah/.test(t));
     check(kossi, "location de Kossi Mensah dans les données de démo");
     await p.selectOption("select[name=leaseId]", kossi[0]);
     await p.fill("input[name=amount]", "75000");
-    await Promise.all([p.waitForURL(/\/paiements\/[0-9a-f-]{36}/, { timeout: 60_000 }), p.click("button[type=submit]")]);
+    await p.click("button[type=submit]");
+    try {
+      await p.waitForURL(/\/paiements\/[0-9a-f-]{36}/, { timeout: 60_000, waitUntil: "commit" });
+    } catch (e) {
+      // Diagnostic : ce que la page affiche (message d'erreur du formulaire ?)
+      await p.screenshot({ path: path.join(process.env.ZE_DIAG_DIR || os.tmpdir(), "ze-loyer-echec-paiement.png"), fullPage: true }).catch(() => {});
+      console.error(`Page après « Enregistrer » (${p.url()}) :\n${(await p.innerText("main").catch(() => "")).slice(0, 1500)}`);
+      throw e;
+    }
     check(true, "paiement de 75 000 F enregistré (droits limités du compte de l'application)");
     const href = await p.getAttribute("a[href*='/api/quittances/']", "href");
     const pdf = await p.request.get(url + href);
