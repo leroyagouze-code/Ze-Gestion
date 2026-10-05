@@ -6,6 +6,8 @@ Web App responsive / PWA pour les propriétaires, agences et locataires au Togo 
 
 Architecture, schéma de base de données, pages, API, rôles et parcours : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+**Logiciel Windows** : [`desktop/README.md`](desktop/README.md) — un installateur `.exe` qui contient tout ZE LOYER (site, base de données, serveur) et fonctionne sans internet, construit automatiquement par GitHub (Actions → « ZE LOYER Windows »).
+
 **Application Android** : [`mobile/README.md`](mobile/README.md) — un fichier `.apk` qui ouvre le site ZE LOYER hébergé sur votre serveur (même code, mêmes comptes), construit automatiquement par GitHub (Actions → « ZE LOYER Android »).
 
 ## Démarrage local

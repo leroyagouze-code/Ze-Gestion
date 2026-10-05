@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
   // ze-loyer/ vit dans le dépôt Ze-Gestion (autre package-lock.json à la racine) : on fixe la racine du projet ici
   outputFileTracingRoot: path.join(__dirname),
   serverExternalPackages: ["@node-rs/argon2", "@react-pdf/renderer"],
+  // Polices standard du PDF chargées dynamiquement par pdfkit (invisibles au traçage) : sans elles, la quittance PDF
+  // échoue dans le serveur autonome (Docker, logiciel Windows)
+  outputFileTracingIncludes: { "/api/quittances/**": ["./node_modules/pdfkit/js/standard-fonts/**"] },
   experimental: { serverActions: { bodySizeLimit: "6mb" } },
   async headers() {
     return [
