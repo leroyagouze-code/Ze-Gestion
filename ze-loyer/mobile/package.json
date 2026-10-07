@@ -1,0 +1,25 @@
+{
+  "name": "ze-loyer-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Application Android ZE LOYER (Capacitor) : ouvre le site ZE LOYER hébergé sur votre serveur",
+  "type": "module",
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "sync": "node scripts/configure.mjs && cap sync android",
+    "icons": "capacitor-assets generate --android --iconBackgroundColor '#0f5f3e' --splashBackgroundColor '#0f5f3e'",
+    "apk:debug": "npm run sync && cd android && ./gradlew assembleDebug",
+    "apk:release": "npm run sync && cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/status-bar": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2",
+    "typescript": "5.9"
+  }
+}

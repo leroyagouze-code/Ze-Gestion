@@ -1,0 +1,35 @@
+# Mise en ligne de ZE LOYER sur Render (https://render.com) — « Blueprint ».
+# Render → New → Blueprint → choisir ce dépôt : le service ci-dessous est créé automatiquement.
+# La base PostgreSQL est chez Neon (https://neon.tech) : collez son adresse dans DATABASE_URL quand Render la demande.
+# Guide pas à pas : ze-loyer/docs/MISE-EN-LIGNE.md
+services:
+  - type: web
+    name: ze-loyer
+    runtime: node
+    rootDir: ze-loyer
+    # Francfort : la région Render la plus proche de l'Afrique de l'Ouest
+    region: frankfurt
+    # Starter : pas de mise en veille, et disque permanent pour les contrats et preuves envoyés
+    plan: starter
+    buildCommand: npm ci && npm run build
+    # Les migrations de la base sont appliquées à chaque démarrage (sans effet si déjà faites)
+    startCommand: npm run db:migrate && npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_URL
+        value: https://loyer.zegroupafrica.com
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: CRON_SECRET
+        generateValue: true
+    disk:
+      name: ze-loyer-fichiers
+      mountPath: /var/data
+      sizeGB: 1
+    domains:
+      - loyer.zegroupafrica.com
