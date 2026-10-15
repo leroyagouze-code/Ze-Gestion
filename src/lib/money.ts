@@ -17,11 +17,19 @@ export function round(value: number, decimals = 2) {
   return Math.round((value + Number.EPSILON) * f) / f;
 }
 
-export function formatMoney(value: number, currency = "XOF", locale = "fr-FR") {
+/** Montant sans symbole de devise (colonnes des tickets). */
+export function formatAmount(value: number, currency = "XOF", locale = "fr-FR") {
   const d = currencyDecimals(currency);
   const n = new Intl.NumberFormat(locale, { minimumFractionDigits: d, maximumFractionDigits: d }).format(value);
-  const symbol = currency === "XOF" || currency === "XAF" ? "FCFA" : currency;
-  return `${n.replace(/ /g, " ")} ${symbol}`;
+  return n.replace(/ /g, " ");
+}
+
+export function currencySymbol(currency = "XOF") {
+  return currency === "XOF" || currency === "XAF" ? "FCFA" : currency;
+}
+
+export function formatMoney(value: number, currency = "XOF", locale = "fr-FR") {
+  return `${formatAmount(value, currency, locale)} ${currencySymbol(currency)}`;
 }
 
 export function formatQty(value: number) {

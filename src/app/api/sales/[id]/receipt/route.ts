@@ -14,7 +14,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!/^[0-9a-f-]{36}$/.test(id)) return NextResponse.json({ error: "Introuvable" }, { status: 404 });
   try {
     const d = await getSale(ctx, id);
-    const pdf = await receiptPdf(ctx.company, d.sale, d.items, d.payments, { cashier: d.userName, customer: d.customer?.name }, { credit: showAppCredit(ctx.subscription) });
+    const pdf = await receiptPdf(ctx.company, d.sale, d.items, d.payments, { cashier: d.userName, customer: d.customer?.name, register: d.registerName }, { credit: showAppCredit(ctx.subscription) });
     return new NextResponse(new Uint8Array(pdf), {
       headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${d.sale.number}.pdf"`, "Cache-Control": "private, no-store" },
     });

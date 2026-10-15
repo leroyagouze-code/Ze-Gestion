@@ -1,7 +1,7 @@
-import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Font, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import type { companies, CustomerSnapshot, invoiceItems, invoices, quoteItems, quotes, saleItems, sales } from "@/db/schema";
-import { formatDate } from "@/lib/dates";
-import { formatMoney, formatQty, priceBasis, shownLineTotal, vatDetail } from "@/lib/money";
+import { formatDate, formatTime } from "@/lib/dates";
+import { currencySymbol, formatAmount, formatMoney, formatQty, priceBasis, shownLineTotal, vatDetail } from "@/lib/money";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { APP_NAME, APP_PUBLISHER } from "@/lib/brand";
@@ -9,6 +9,9 @@ import { isLightTransparentLogo, readStoredFile } from "@/lib/storage";
 import { PROFORMA_NOTICE } from "@/modules/quotes/labels";
 
 type Company = typeof companies.$inferSelect;
+
+// Pas de césure automatique (« IN-HALER ») : les mots trop longs passent entiers à la ligne
+Font.registerHyphenationCallback((word) => [word]);
 
 let brandTile: Promise<Buffer | null> | null = null;
 /** Petit logo ZE GROUP du pied de page (lu une seule fois). */
@@ -267,60 +270,134 @@ export async function quotePdf(company: Company, quote: typeof quotes.$inferSele
   );
 }
 
-/** Ticket de caisse 58/80 mm (hauteur calculée selon le nombre de lignes). */
+/** Ticket de caisse 58/80 mm (hauteur calculée selon le nombre de lignes), présenté en tableau. */
 export async function receiptPdf(
   company: Company,
   sale: typeof sales.$inferSelect,
   items: (typeof saleItems.$inferSelect)[],
   pays: { method: string | null; amount: number }[],
-  extra: { cashier?: string | null; customer?: string | null },
+  extra: { cashier?: string | null; customer?: string | null; register?: string | null },
   opts: PdfOptions = {},
 ) {
   const credit = opts.credit ?? true;
   const logo = await logoSrc(company);
-  const m = (v: number) => formatMoney(v, company.currency);
-  const width = company.receiptFormat === "58mm" ? 164 : 226; // points (1 mm ≈ 2.83 pt)
-  const vat = vatDetail(items, sale, company.currency);
-  const height = 190 + items.length * 24 + (pays.length + vat.length) * 11 + (logo ? 50 : 0) + (extra.customer ? 10 : 0);
-  const t = StyleSheet.create({ p: { padding: 8, fontSize: 7.5, fontFamily: "Helvetica" }, c: { textAlign: "center" }, line: { borderBottomWidth: 0.5, borderBottomStyle: "dashed", borderBottomColor: "#000", marginVertical: 4 } });
+  const cur = company.currency;
+  const n = (v: number) => formatAmount(v, cur);
+  const sym = currencySymbol(cur);
+  const narrow = company.receiptFormat === "58mm";
+  const width = narrow ? 164 : 226; // points (1 mm ≈ 2.83 pt)
+  const vat = vatDetail(items, sale, cur);
+  const articles = items.reduce((sum, it) => sum + it.quantity, 0);
+  const lineTotals = items.reduce((sum, it) => sum + shownLineTotal(it), 0);
+  // Remise globale (promo, remise sur le total) : ce qui sépare la somme des lignes du net à payer
+  const globalDiscount = Math.max(Math.round((lineTotals + (sale.taxMode === "total" ? sale.taxTotal : 0) - sale.total) * 100) / 100, 0);
+  const change = sale.changeAmount ?? 0;
+  const tendered = sale.tenderedAmount || sale.paidAmount;
+  const charsPerLine = narrow ? 11 : 16; // estimation prudente (majuscules) : mieux vaut un peu de blanc qu'une 2e page
+  const itemLines = items.reduce((sum, it) => sum + Math.max(1, Math.ceil(it.name.length / charsPerLine)) + (it.discount ? 1 : 0), 0);
+  const height =
+    175 + itemLines * 10 + items.length * 5 + (pays.length + vat.length) * 11 + (logo ? 50 : 0) + (extra.customer ? 11 : 0) + (change > 0 ? 24 : 0) + (globalDiscount > 0 ? 24 : 0) +
+    (sale.dueAmount > 0 ? 16 : 0) + (sale.status === "cancelled" ? 14 : 0) + (company.taxId ? 10 : 0) + (company.invoiceFooter ? 12 : 0);
+  const fs = narrow ? 6.8 : 7.5;
+  const col = narrow ? { q: 16, pu: 34, mt: 38 } : { q: 20, pu: 44, mt: 48 };
+  const b = { borderColor: "#000", borderStyle: "solid" as const };
+  const t = StyleSheet.create({
+    p: { padding: 8, fontSize: fs, fontFamily: "Helvetica" },
+    c: { textAlign: "center" },
+    r: { textAlign: "right" },
+    line: { borderBottomWidth: 0.5, borderBottomStyle: "dashed", borderBottomColor: "#000", marginVertical: 4 },
+    table: { ...b, borderWidth: 0.6, marginTop: 3 },
+    cell: { ...b, borderLeftWidth: 0.6, paddingHorizontal: 2, paddingVertical: 1.5 },
+    head: { flexDirection: "row", ...b, borderBottomWidth: 0.6 },
+    total: { flexDirection: "row", justifyContent: "space-between", marginTop: 1 },
+  });
+  const Row = ({ label, value, strong }: { label: string; value: string; strong?: boolean }) => (
+    <View style={t.total}>
+      <Text style={strong ? [s.bold, { fontSize: fs + 2.5 }] : undefined}>{label}</Text>
+      <Text style={strong ? [s.bold, { fontSize: fs + 2.5 }] : undefined}>{value}</Text>
+    </View>
+  );
   const doc = (
     <Document title={`Ticket ${sale.number}`}>
       <Page size={company.receiptFormat === "A4" ? "A4" : [width, height]} style={t.p}>
         {logo && <Image src={logo} style={{ width: 60, alignSelf: "center", marginBottom: 4 }} />}
-        <Text style={[t.c, s.bold, { fontSize: 10 }]}>{company.name}</Text>
+        <Text style={[t.c, s.bold, { fontSize: fs + 3 }]}>{company.name.toUpperCase()}</Text>
         {company.address && <Text style={t.c}>{company.address}</Text>}
-        {company.phone && <Text style={t.c}>Tél : {company.phone}</Text>}
         {company.taxId && <Text style={t.c}>N° fiscal : {company.taxId}</Text>}
-        <View style={t.line} />
-        <Text>Ticket : {sale.number}</Text>
-        <Text>Date : {formatDate(sale.createdAt, true)}</Text>
-        {extra.cashier && <Text>Caissier : {extra.cashier}</Text>}
-        {extra.customer && <Text>Client : {extra.customer}</Text>}
-        {sale.status === "cancelled" && <Text style={[t.c, s.bold]}>*** VENTE ANNULÉE ***</Text>}
-        <View style={t.line} />
-        {items.map((it) => (
-          <View key={it.id} style={{ marginBottom: 3 }}>
-            <Text>{it.name}</Text>
-            <View style={s.between}>
-              <Text>{formatQty(it.quantity)} × {m(it.unitPrice)}{it.discount ? ` − ${m(it.discount)}` : ""}</Text>
-              <Text>{m(shownLineTotal(it))}</Text>
-            </View>
+        <View style={[s.between, { marginTop: 6 }]}>
+          <Text>{company.phone ? `Tél : ${company.phone}` : ""}</Text>
+          <Text>Le : {formatDate(sale.createdAt)}</Text>
+        </View>
+        <View style={s.between}>
+          <Text>Ticket : {sale.number}</Text>
+          <Text>{formatTime(sale.createdAt)}</Text>
+        </View>
+        {(extra.register || extra.cashier) && (
+          <Text>
+            {[extra.register, extra.cashier && `Caissier : ${extra.cashier}`].filter(Boolean).join(" · ")}
+          </Text>
+        )}
+        {sale.status === "cancelled" && <Text style={[t.c, s.bold, { marginTop: 3 }]}>*** VENTE ANNULÉE ***</Text>}
+        <View style={t.table}>
+          <View style={t.head}>
+            <Text style={[t.cell, s.bold, { flex: 1, borderLeftWidth: 0 }]}>Produit</Text>
+            <Text style={[t.cell, s.bold, t.c, { width: col.q }]}>Qté</Text>
+            <Text style={[t.cell, s.bold, t.r, { width: col.pu }]}>Px uni</Text>
+            <Text style={[t.cell, s.bold, t.r, { width: col.mt }]}>Montant</Text>
           </View>
-        ))}
+          {items.map((it) => (
+            <View key={it.id} style={{ flexDirection: "row" }} wrap={false}>
+              <View style={[t.cell, { flex: 1, borderLeftWidth: 0 }]}>
+                <Text>{it.name}</Text>
+                {it.discount > 0 && <Text style={{ fontSize: fs - 0.8 }}>Remise −{n(it.discount)}</Text>}
+              </View>
+              <Text style={[t.cell, t.c, { width: col.q }]}>{formatQty(it.quantity)}</Text>
+              <Text style={[t.cell, t.r, { width: col.pu }]}>{n(it.unitPrice)}</Text>
+              <Text style={[t.cell, t.r, { width: col.mt }]}>{n(shownLineTotal(it))}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={{ marginTop: 5 }}>
+          {sale.taxMode === "total" ? (
+            <>
+              <Row label="Total HT :" value={n(lineTotals)} />
+              {vat.length > 1 ? (
+                vat.map((v) => <Row key={v.rate} label={`TVA ${formatQty(v.rate)} % :`} value={n(v.tax)} />)
+              ) : (
+                <Row label="TVA :" value={n(sale.taxTotal)} />
+              )}
+            </>
+          ) : (
+            <>
+              <Row label="Total :" value={`${n(lineTotals)} ${sym}`} />
+              {vat.length > 1 ? (
+                vat.map((v) => <Row key={v.rate} label={`Dont TVA ${formatQty(v.rate)} % :`} value={n(v.tax)} />)
+              ) : (
+                <Row label="Dont TVA :" value={n(sale.taxTotal)} />
+              )}
+            </>
+          )}
+          {globalDiscount > 0 && <Row label={sale.promoCode ? `Remise (${sale.promoCode}) :` : "Remise :"} value={`−${n(globalDiscount)}`} />}
+        </View>
         <View style={t.line} />
-        <View style={s.between}><Text>Total HT</Text><Text>{m(sale.subtotal)}</Text></View>
-        <View style={s.between}><Text>TVA</Text><Text>{m(sale.taxTotal)}</Text></View>
-        {vat.map((v) => (
-          <View key={v.rate} style={s.between}><Text>  dont {formatQty(v.rate)} % sur {m(v.base)}</Text><Text>{m(v.tax)}</Text></View>
-        ))}
-        {sale.discountTotal > 0 && <View style={s.between}><Text>Remises</Text><Text>−{m(sale.discountTotal)}</Text></View>}
-        <View style={[s.between, { marginTop: 2 }]}><Text style={[s.bold, { fontSize: 10 }]}>TOTAL</Text><Text style={[s.bold, { fontSize: 10 }]}>{m(sale.total)}</Text></View>
+        <Row label={`Net à payer en ${sym}`} value={n(sale.total)} strong />
         {pays.map((p, i) => (
-          <View key={i} style={s.between}><Text>{p.method}</Text><Text>{m(p.amount)}</Text></View>
+          <Row key={i} label={p.method ?? "Paiement"} value={n(p.amount)} />
         ))}
-        {sale.dueAmount > 0 && <View style={s.between}><Text style={s.bold}>Reste dû</Text><Text style={s.bold}>{m(sale.dueAmount)}</Text></View>}
-        <View style={t.line} />
-        <Text style={t.c}>{company.invoiceFooter || "Merci pour votre achat !"}</Text>
+        {change > 0 && (
+          <>
+            <Row label="Montant reçu" value={n(tendered)} />
+            <Row label={`Montant rendu en ${sym}`} value={n(change)} strong />
+          </>
+        )}
+        {sale.dueAmount > 0 && <Row label={`Reste dû en ${sym}`} value={n(sale.dueAmount)} strong />}
+        <View style={[s.between, { marginTop: 4 }]}>
+          <Text>Nombre d&apos;articles :</Text>
+          <Text>{formatQty(articles)}</Text>
+        </View>
+        {extra.customer && <Text>Client : {extra.customer}</Text>}
+        <Text style={[t.c, s.bold, { fontSize: fs + 2, marginTop: 8 }]}>MERCI</Text>
+        {company.invoiceFooter && <Text style={t.c}>{company.invoiceFooter}</Text>}
         {credit && <Text style={[t.c, { fontSize: 6, marginTop: 4, color: "#555" }]}>Logiciel {APP_NAME} · {APP_PUBLISHER}</Text>}
       </Page>
     </Document>
