@@ -209,6 +209,20 @@ export async function deleteRole(ctx: AppContext, id: string) {
   });
 }
 
+/** Nom affiché chez le client pour les actions faites par la plateforme (super admin). */
+export const PLATFORM_ACTOR = "Équipe ZE Gestion";
+
+/**
+ * Les actions de la plateforme (essai prolongé, paiement enregistré, suspension…) restent tracées avec
+ * l'identifiant du super admin en base, mais le client ne voit ni son nom, ni son IP, ni la note interne.
+ */
+function platformAsTeam<T extends { action: string; userName: string | null; ip: string | null; metadata: unknown }>(row: T): T {
+  if (!row.action.startsWith("platform.")) return row;
+  const meta = row.metadata && typeof row.metadata === "object" ? { ...(row.metadata as Record<string, unknown>) } : row.metadata;
+  if (meta && typeof meta === "object") delete (meta as Record<string, unknown>).note;
+  return { ...row, userName: PLATFORM_ACTOR, ip: null, metadata: meta };
+}
+
 export async function listAudit(ctx: AppContext, opts: { page?: number }) {
   ctxAssert(ctx, "audit.view");
   const { limit, offset, page } = pageParams(opts.page, 50);
@@ -230,6 +244,6 @@ export async function listAudit(ctx: AppContext, opts: { page?: number }) {
       .limit(limit)
       .offset(offset);
     const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(auditLogs);
-    return { rows, total: count, page, pageSize: limit };
+    return { rows: rows.map(platformAsTeam), total: count, page, pageSize: limit };
   });
 }
