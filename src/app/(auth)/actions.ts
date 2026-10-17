@@ -1,6 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { GOOGLE_PENDING_COOKIE, readPendingProfile } from "@/lib/auth/google";
 import { errorMessage, type ActionState } from "@/lib/actions";
 import { clearSessionCookie, getSession, requestMeta, setSessionCookie } from "@/lib/auth/server";
 import { deleteSession } from "@/lib/auth/session";
@@ -18,7 +20,12 @@ import {
 export async function signupAction(_: ActionState, fd: FormData): Promise<ActionState> {
   let target = "/settings/company?welcome=1";
   try {
-    const { session, mustVerifyEmail } = await signup(formToObject(fd) as never, await requestMeta());
+    // Inscription commencée avec Google : le profil vient du cookie signé, jamais du formulaire
+    const jar = await cookies();
+    const google = fd.get("google") === "1" ? readPendingProfile(jar.get(GOOGLE_PENDING_COOKIE)?.value) : null;
+    if (fd.get("google") === "1" && !google) return { error: "La connexion Google a expiré. Recommencez avec « Continuer avec Google »." };
+    const { session, mustVerifyEmail } = await signup(formToObject(fd) as never, await requestMeta(), google ? { google } : {});
+    if (google) jar.delete(GOOGLE_PENDING_COOKIE);
     await setSessionCookie(session.token, session.expiresAt);
     if (mustVerifyEmail) target = "/verification?welcome=1";
   } catch (e) {
