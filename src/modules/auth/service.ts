@@ -24,7 +24,9 @@ import {
   isRateLimited,
   recordFailedAttempt,
   deleteUserSessions,
+  newToken,
 } from "@/lib/auth/session";
+import type { GoogleProfile } from "@/lib/auth/google";
 import { z } from "zod";
 import { DEFAULT_SEQUENCES } from "@/modules/settings/sequences";
 import { mailEnabled, sendMail, sendMailInBackground } from "@/lib/mail";
@@ -69,8 +71,15 @@ let _dummy: Promise<string> | null = null;
 const dummyHash = () => (_dummy ??= hashPassword("dummy-password-for-timing"));
 
 /** Inscription : crée l'entreprise, l'administrateur et tout l'espace de travail par défaut. */
-export async function signup(raw: SignupInput, meta: { ip?: string | null; userAgent?: string | null } = {}) {
-  const input = signupSchema.parse(raw);
+export async function signup(
+  raw: SignupInput,
+  meta: { ip?: string | null; userAgent?: string | null } = {},
+  opts: { google?: GoogleProfile } = {},
+) {
+  // Avec Google : adresse imposée (déjà vérifiée par Google) et mot de passe aléatoire inconnu,
+  // remplaçable plus tard par « Mot de passe oublié ».
+  const google = opts.google;
+  const input = signupSchema.parse(google ? { ...raw, email: google.email, password: newToken(24) } : raw);
   // Sans IP connue (scripts, tests), pas de limite : une clé commune bloquerait tout le monde
   const signupKey = meta.ip ? `signup:${meta.ip}` : null;
   if (signupKey && (await isRateLimited(signupKey, LIMITS.signup.max, LIMITS.signup.windowMs))) {
@@ -106,8 +115,8 @@ export async function signup(raw: SignupInput, meta: { ip?: string | null; userA
       passwordHash,
       fullName: input.ownerName,
       phone: input.phone,
-      // Sans envoi d'emails possible (Windows, développement), pas de vérification : compte utilisable tout de suite
-      emailVerifiedAt: mailEnabled() ? null : new Date(),
+      // Sans envoi d'emails possible (Windows, développement) ou adresse garantie par Google : compte utilisable tout de suite
+      emailVerifiedAt: mailEnabled() && !google ? null : new Date(),
     });
 
     const insertedRoles = await tx
@@ -149,12 +158,12 @@ export async function signup(raw: SignupInput, meta: { ip?: string | null; userA
         trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 86400_000),
       });
     }
-    await audit(tx, { companyId, userId, action: "company.created", entityType: "company", entityId: companyId, ip: meta.ip });
+    await audit(tx, { companyId, userId, action: "company.created", entityType: "company", entityId: companyId, ip: meta.ip, metadata: google ? { method: "google" } : undefined });
   });
 
   if (signupKey) await recordFailedAttempt(signupKey, LIMITS.signup.windowMs); // compte les inscriptions réussies
   const session = await createSession({ userId, companyId, ...meta });
-  const mustVerifyEmail = mailEnabled();
+  const mustVerifyEmail = mailEnabled() && !google;
   if (mustVerifyEmail) {
     // Un échec d'envoi n'annule pas l'inscription : « Renvoyer le code » reste possible
     await sendVerificationCode(userId).catch((e) => console.error("[email] code de vérification non envoyé", e));
@@ -199,6 +208,29 @@ export async function login(
   }
   const session = await createSession({ userId: user.id, companyId, ...meta });
   return { userId: user.id, companyId, isSuperAdmin: user.isSuperAdmin, session, mustVerifyEmail: needsEmailVerification(user) };
+}
+
+/**
+ * Connexion avec Google pour un compte existant (même adresse email). Google garantit l'adresse :
+ * elle est marquée vérifiée. Renvoie null si aucun compte n'existe encore (inscription à terminer).
+ */
+export async function loginWithGoogle(profile: GoogleProfile, meta: { ip?: string | null; userAgent?: string | null } = {}) {
+  const [user] = await db.select().from(users).where(eq(users.email, profile.email)).limit(1);
+  if (!user) return null;
+  const now = new Date();
+  await db
+    .update(users)
+    .set({ lastLoginAt: now, ...(user.emailVerifiedAt ? {} : { emailVerifiedAt: now }) })
+    .where(eq(users.id, user.id));
+  const companyIds = await listUserCompanyIds(user.id);
+  const companyId = companyIds[0] ?? null;
+  if (companyId) {
+    await withTenant({ companyId, userId: user.id }, (tx) =>
+      audit(tx, { companyId, userId: user.id, action: "auth.login", ip: meta.ip, metadata: { method: "google" } }),
+    );
+  }
+  const session = await createSession({ userId: user.id, companyId, ...meta });
+  return { userId: user.id, companyId, isSuperAdmin: user.isSuperAdmin, session };
 }
 
 export const passwordSchema = z.string().min(8, "8 caractères minimum").max(200, "200 caractères maximum");
