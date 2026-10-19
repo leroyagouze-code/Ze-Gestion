@@ -49,6 +49,9 @@ services:
       PAYMENT_MODE: ${PAYMENT_MODE:-}
       PAYGATE_API_KEY: ${PAYGATE_API_KEY:-}
       # Emails (codes à 6 chiffres) : boîte noreply chez LWS. Sans SMTP_PASSWORD, envoi désactivé.
+      # Connexion « Continuer avec Google » : identifiants OAuth de la console Google Cloud. Vides = bouton masqué.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       SMTP_HOST: ${SMTP_HOST:-mail.zegroupafrica.com}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_SECURE: ${SMTP_SECURE:-true}

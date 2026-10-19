@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Field } from "@/components/ui";
+import { GoogleButton } from "@/components/google-button";
+import { googleEnabled } from "@/lib/auth/google";
 import { getContext, getSession, pendingStep } from "@/lib/auth/server";
 import { loginAction } from "../actions";
 
@@ -16,11 +18,15 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       {error === "no_company" && (
         <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Aucune entreprise active n&apos;est liée à ce compte.</p>
       )}
+      {error === "google" && (
+        <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">La connexion avec Google n&apos;a pas abouti. Réessayez.</p>
+      )}
       {reset === "1" && (
         <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Mot de passe modifié. Connectez-vous avec le nouveau : vos autres appareils ont été déconnectés.
         </p>
       )}
+      {googleEnabled() && <GoogleButton />}
       <ActionForm action={loginAction} className="space-y-4" showOk={false}>
         <Field label="Email" name="email" type="email" autoComplete="email" required />
         <Field label="Mot de passe" name="password" type="password" autoComplete="current-password" required />
