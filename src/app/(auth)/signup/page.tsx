@@ -48,6 +48,15 @@ export default async function SignupPage() {
         <Field label="N° d'identification fiscale" name="taxId" hint="Si applicable" />
         <Field label="Adresse de facturation" name="billingAddress" />
         <TextArea label="Informations complémentaires" name="extraInfo" className="sm:col-span-2" />
+        <label className="flex items-start gap-2 text-sm text-slate-700 sm:col-span-2">
+          <input type="checkbox" name="marketingOptIn" defaultChecked className="mt-0.5 accent-brand-700" />
+          <span>Recevoir par e-mail les nouveautés et offres de ZE Gestion (désabonnement possible à tout moment).</span>
+        </label>
+        <p className="text-xs text-slate-500 sm:col-span-2">
+          En créant votre espace, vous acceptez les{" "}
+          <Link href="/conditions" className="underline">conditions d&apos;utilisation</Link> et les{" "}
+          <Link href="/confidentialite" className="underline">règles de confidentialité</Link>.
+        </p>
         <p className="text-xs text-slate-500 sm:col-span-2">Le logo et les couleurs se configurent juste après l&apos;inscription.</p>
         <SubmitButton className="btn-primary w-full sm:col-span-2" pendingText="Création de votre espace…">
           Créer mon espace

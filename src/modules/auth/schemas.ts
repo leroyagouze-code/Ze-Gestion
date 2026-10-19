@@ -22,6 +22,8 @@ export const signupSchema = z.object({
   taxId: optional,
   billingAddress: optional,
   extraInfo: optional,
+  // Case « Recevoir les offres » : cochée = "on" ; absente = refus
+  marketingOptIn: z.preprocess((v) => v === true || v === "on" || v === "true", z.boolean()).optional(),
 });
 export type SignupInput = z.input<typeof signupSchema>;
 

@@ -32,6 +32,7 @@ import { DEFAULT_SEQUENCES } from "@/modules/settings/sequences";
 import { mailEnabled, sendMail, sendMailInBackground } from "@/lib/mail";
 import { CODE_TTL_MS, checkCode, codeCooldown, deleteCode, issueCode, type CodePurpose } from "./codes";
 import { codeEmail } from "./emails";
+import { sendWelcomeEmail } from "@/modules/marketing/service";
 import { loginSchema, signupSchema, type SignupInput } from "./schemas";
 
 export class AuthError extends Error {}
@@ -115,6 +116,7 @@ export async function signup(
       passwordHash,
       fullName: input.ownerName,
       phone: input.phone,
+      marketingOptIn: input.marketingOptIn ?? false,
       // Sans envoi d'emails possible (Windows, développement) ou adresse garantie par Google : compte utilisable tout de suite
       emailVerifiedAt: mailEnabled() && !google ? null : new Date(),
     });
@@ -163,6 +165,7 @@ export async function signup(
 
   if (signupKey) await recordFailedAttempt(signupKey, LIMITS.signup.windowMs); // compte les inscriptions réussies
   const session = await createSession({ userId, companyId, ...meta });
+  sendWelcomeEmail({ to: input.email, name: input.ownerName, companyName: input.companyName, trialDays: TRIAL_DAYS });
   const mustVerifyEmail = mailEnabled() && !google;
   if (mustVerifyEmail) {
     // Un échec d'envoi n'annule pas l'inscription : « Renvoyer le code » reste possible
