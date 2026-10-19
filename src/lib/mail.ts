@@ -9,7 +9,7 @@ import nodemailer from "nodemailer";
  * en écrivant les emails (et donc les codes) dans la console du serveur au lieu de les envoyer.
  */
 
-export type MailMessage = { to: string; subject: string; text: string; html: string };
+export type MailMessage = { to: string; subject: string; text: string; html: string; /** Lien de désabonnement (en-tête List-Unsubscribe). */ listUnsubscribe?: string };
 export type MailTransport = { send(msg: MailMessage & { from: string }): Promise<void> };
 
 const env = (k: string) => process.env[k]?.trim() || undefined;
@@ -56,7 +56,8 @@ export async function sendMail(msg: MailMessage) {
   if (override) return override.send(full);
   if (!mailEnabled()) throw new Error("Envoi d'emails non configuré");
   if (smtpConfigured() && !consoleMode()) {
-    await smtpTransport().sendMail(full);
+    const { listUnsubscribe, ...m } = full;
+    await smtpTransport().sendMail(listUnsubscribe ? { ...m, list: { unsubscribe: listUnsubscribe } } : m);
     return;
   }
   console.info(`[email] à ${full.to} : ${full.subject}\n${full.text}`);

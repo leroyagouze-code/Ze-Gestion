@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/dates";
 import { issueLicense } from "@/modules/billing/license";
 import { savePrice } from "@/modules/billing/license-orders";
 import { deletePlatformPromo, savePlatformPromo, setPlatformPromoActive } from "@/modules/billing/platform-promos";
+import { sendTestCampaign, startCampaign } from "@/modules/marketing/service";
 import { grantFreeAccess, extendTrial, recordSubscriptionPayment, setCompanyPlan, setCompanyStatus, setUnlimited } from "@/modules/admin/service";
 
 async function admin() {
@@ -122,5 +123,18 @@ export async function deletePlatformPromoAction(id: string, _s: ActionState): Pr
     await deletePlatformPromo(s, id);
     revalidatePath("/admin/codes-promo");
     return "Code supprimé";
+  });
+}
+
+/* ─────────── E-mails d'offres ─────────── */
+
+export async function campaignAction(_s: ActionState, fd: FormData): Promise<ActionState> {
+  const s = await admin();
+  const data = Object.fromEntries(fd);
+  return runAction(async () => {
+    if (fd.get("intent") === "test") return `Test envoyé à ${await sendTestCampaign(s, data)}`;
+    const c = await startCampaign(s, data);
+    revalidatePath("/admin/emails");
+    return `Envoi lancé vers ${c.recipients} destinataire(s)`;
   });
 }

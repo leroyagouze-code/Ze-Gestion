@@ -17,9 +17,9 @@ import {
 import { addMember, listMembers } from "@/modules/users/service";
 import { newCompany } from "./helpers";
 
-// Faux transport : garde les emails en mémoire au lieu de les envoyer
+// Faux transport : garde les emails de code en mémoire au lieu de les envoyer (la bienvenue est testée à part)
 const outbox: (MailMessage & { from: string })[] = [];
-const fake = { send: async (m: MailMessage & { from: string }) => void outbox.push(m) };
+const fake = { send: async (m: MailMessage & { from: string }) => void (m.subject.startsWith("Bienvenue") || outbox.push(m)) };
 
 beforeAll(() => setMailTransport(fake));
 afterAll(() => setMailTransport(undefined));

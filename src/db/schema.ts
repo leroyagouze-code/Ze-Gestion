@@ -261,7 +261,26 @@ export const users = pgTable("users", {
   // Adresse confirmée par un code reçu par email ; nul = à vérifier (seulement si l'envoi d'emails est configuré)
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  /** Accepte les e-mails d'offres et de nouveautés de ZE Gestion (case à l'inscription, lien de désabonnement). */
+  marketingOptIn: boolean("marketing_opt_in").notNull().default(true),
+  /** Jeton secret du lien de désabonnement présent dans chaque e-mail d'offre. */
+  emailToken: uuid("email_token").notNull().defaultRandom().unique(),
   createdAt: createdAt(),
+});
+
+/** E-mails d'offres envoyés par le super admin aux responsables d'entreprise (table plateforme, sans RLS). */
+export const emailCampaigns = pgTable("email_campaigns", {
+  id: id(),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  audience: text("audience").notNull(),
+  recipients: integer("recipients").notNull().default(0),
+  sent: integer("sent").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  status: text("status").notNull().default("sending"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
 });
 
 export const sessions = pgTable(
