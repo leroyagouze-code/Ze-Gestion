@@ -120,6 +120,13 @@
       "when": 1792393015394,
       "tag": "0016_emails_marketing",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792478072510,
+      "tag": "0017_abonnement_en_ligne",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import clsx from "clsx";
 import {
   BarChart3,
   Calculator,
+  CreditCard,
   Boxes,
   FileSignature,
   FileText,
@@ -47,6 +48,7 @@ const ICONS = {
   admin: Shield,
   licence: KeyRound,
   promos: Tag,
+  subscription: CreditCard,
 };
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };

@@ -42,6 +42,7 @@ const LABELS: Record<string, string> = {
   "platform.company_active": "Réactivation du compte",
   "platform.plan_changed": "Changement de formule",
   "platform.trial_extended": "Période d'essai prolongée",
+  "billing.subscription_paid": "Abonnement payé en ligne",
   "platform.payment_recorded": "Paiement de l'abonnement enregistré",
   "platform.free_access": "Accès offert",
   "platform.unlimited_granted": "Accès illimité activé",
