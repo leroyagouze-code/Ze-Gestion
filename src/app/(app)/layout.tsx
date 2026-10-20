@@ -27,7 +27,15 @@ const NAV: (NavItem & { perm?: Permission })[] = [
   { href: "/audit", label: "Journal d'activité", icon: "audit", perm: "audit.view" },
 ];
 
-const SUPPORT = process.env.SUPPORT_CONTACT ?? "notre équipe";
+/** Lien vers la page Abonnement pour l'administrateur ; les autres préviennent l'administrateur. */
+const subscribeCta = (isAdmin: boolean, label = "S'abonner") =>
+  isAdmin ? (
+    <Link href="/abonnement" className="font-semibold underline">
+      {label}
+    </Link>
+  ) : (
+    "Prévenez l'administrateur de l'entreprise."
+  );
 
 function DesktopBanner({ state, isAdmin }: { state: AppContext["subscription"]; isAdmin: boolean }) {
   const cta = isAdmin ? <Link href="/licence" className="font-semibold underline">Saisir un code de licence</Link> : "Prévenez l'administrateur.";
@@ -63,7 +71,7 @@ function SubscriptionBanner({ state, isAdmin }: { state: AppContext["subscriptio
             ? `L'abonnement a expiré le ${formatDate(state.periodEndsAt!)}.`
             : "L'abonnement n'est plus actif."}{" "}
         Vos données restent
-        consultables et exportables, mais les ventes et les modifications sont suspendues. Pour choisir une formule, contactez {SUPPORT}.
+        consultables et exportables, mais les ventes et les modifications sont suspendues. {subscribeCta(isAdmin, "Choisir une formule et payer")}
       </div>
     );
   }
@@ -72,15 +80,15 @@ function SubscriptionBanner({ state, isAdmin }: { state: AppContext["subscriptio
     return (
       <div className="no-print mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
         Essai gratuit : {state.trialDaysLeft === 1 ? "dernier jour" : `${state.trialDaysLeft} jours restants`}. Ensuite, le compte passera en
-        lecture seule jusqu&apos;au choix d&apos;une formule. Contactez {SUPPORT}.
+        lecture seule jusqu&apos;au choix d&apos;une formule. {subscribeCta(isAdmin)}
       </div>
     );
   }
   if (isAdmin && state.periodDaysLeft !== null && state.periodDaysLeft <= 7) {
     return (
       <div className="no-print mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
-        Votre abonnement {state.planName} se termine le {formatDate(state.periodEndsAt!)}. Pensez à le renouveler auprès de {SUPPORT} pour
-        éviter le passage en lecture seule.
+        Votre abonnement {state.planName} se termine le {formatDate(state.periodEndsAt!)}. Pensez à le renouveler pour éviter le passage en lecture
+        seule. {subscribeCta(isAdmin, "Renouveler")}
       </div>
     );
   }
@@ -91,6 +99,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const ctx = await requireContext();
   const items: NavItem[] = NAV.filter((n) => (!n.perm || can(ctx.permissions, n.perm)) && !isHiddenHref(n.href, ctx.company.hiddenModules)).map(({ href, label, icon }) => ({ href, label, icon }));
   if (isDesktop() && ctx.isAdmin) items.push({ href: "/licence", label: "Licence", icon: "licence" });
+  if (!isDesktop() && ctx.isAdmin) items.push({ href: "/abonnement", label: "Abonnement", icon: "subscription" });
   if (ctx.user.isSuperAdmin) items.push({ href: "/admin", label: "Super admin", icon: "admin" });
   return (
     <AppShell items={items} companyName={ctx.company.name} userName={ctx.user.fullName} roleName={ctx.roleName} logoutAction={logoutAction}>

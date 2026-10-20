@@ -4,6 +4,8 @@ import { isDesktop } from "@/lib/license";
 import { LICENSE_DURATIONS } from "@/modules/billing/license";
 import { listPrices } from "@/modules/billing/license-orders";
 import { paymentMode } from "@/modules/billing/paygate";
+import { canPayOnline } from "@/modules/billing/subscription-orders";
+import { getSession } from "@/lib/auth/server";
 import { createOrderAction, previewPromoAction } from "./actions";
 import { OrderForm } from "./order-form";
 
@@ -30,12 +32,13 @@ export default async function BuyLicencePage({ searchParams }: { searchParams: P
     perMonth: MONTHS[p.duration] > 1 ? formatMoney(Math.round(p.amount / MONTHS[p.duration]), p.currency) : null,
   }));
   const plans = PLANS.filter((p) => offers.some((o) => o.plan === p.code));
-  const open = mode && process.env.LICENSE_PRIVATE_KEY && offers.length > 0;
+  // Mode test sur le serveur en production : réservé au super admin (sinon licences gratuites pour tous)
+  const open = mode && canPayOnline({ isSuperAdmin: (await getSession())?.isSuperAdmin }) && process.env.LICENSE_PRIVATE_KEY && offers.length > 0;
   return (
     <div className="card p-6">
       <h1 className="text-lg font-semibold text-slate-900">Acheter une licence ZE Gestion</h1>
       <p className="mb-5 mt-1 text-sm text-slate-500">Pour le logiciel installé sur ordinateur. La clé est créée dès que le paiement est confirmé, et le logiciel s&apos;active tout seul.</p>
-      {mode === "simulation" && (
+      {mode === "simulation" && open && (
         <p className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <b>Mode test.</b> Aucun argent n&apos;est prélevé : à l&apos;étape suivante, vous choisissez si le paiement réussit ou échoue.
         </p>

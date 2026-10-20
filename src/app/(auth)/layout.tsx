@@ -11,6 +11,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         {children}
         <p className="mt-6 flex justify-center gap-4 text-xs text-slate-500">
+          <Link href="/tarifs" className="hover:underline">
+            Tarifs
+          </Link>
           <Link href="/confidentialite" className="hover:underline">
             Confidentialité
           </Link>

@@ -249,6 +249,44 @@ export const subscriptionPayments = pgTable(
   (t) => [index("subscription_payments_company_idx").on(t.companyId, t.createdAt)],
 );
 
+/**
+ * Abonnements payés en ligne par le commerçant (TMoney / Flooz via PayGate) : le paiement confirmé
+ * crée une ligne de subscription_payments et prolonge l'abonnement. Table de la plateforme (sans RLS).
+ */
+export const subscriptionOrders = pgTable(
+  "subscription_orders",
+  {
+    id: id(),
+    reference: text("reference").notNull().unique(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id),
+    months: integer("months").notNull(),
+    amount: money("amount").notNull(),
+    listAmount: money("list_amount").notNull(),
+    discountAmount: money("discount_amount").notNull().default(0),
+    promoCodeId: uuid("promo_code_id").references(() => platformPromoCodes.id, { onDelete: "set null" }),
+    promoCode: text("promo_code"),
+    currency: text("currency").notNull().default("XOF"),
+    phone: text("phone").notNull(),
+    network: text("network").notNull(),
+    provider: text("provider").notNull(), // "paygate" | "simulation"
+    status: text("status").notNull().default("pending"), // pending | paid | failed
+    providerRef: text("provider_ref"),
+    paymentRef: text("payment_ref"),
+    failureReason: text("failure_reason"),
+    paymentId: uuid("payment_id").references(() => subscriptionPayments.id, { onDelete: "set null" }),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("subscription_orders_company_idx").on(t.companyId, t.createdAt), index("subscription_orders_status_idx").on(t.status, t.createdAt)],
+);
+
 export const users = pgTable("users", {
   id: id(),
   email: text("email").notNull().unique(),
